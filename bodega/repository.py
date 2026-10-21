@@ -12,21 +12,33 @@ class DataError(Exception):
 
 class CloudRepository:
     def __init__(self):
-        self.url = str(setting("SUPABASE_URL")).rstrip("/")
-        self.key = str(setting("SUPABASE_SERVICE_ROLE_KEY"))
+        self.url = str(setting("SUPABASE_URL")).strip().rstrip("/")
+        self.key = str(setting("SUPABASE_SERVICE_ROLE_KEY")).strip()
         if not self.url.startswith("https://") or not self.key:
             raise DataError("Configura SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en Secrets.")
+        if self.key.startswith("sb_publishable_"):
+            raise DataError("La conexión necesita una clave secreta de Supabase (sb_secret_...) o legacy service_role. Sustituye la clave pública en SUPABASE_SERVICE_ROLE_KEY dentro de Secrets.")
+        if any(char.isspace() for char in self.key):
+            raise DataError("Copia la clave de Supabase completa en una sola línea, sin espacios, dentro de SUPABASE_SERVICE_ROLE_KEY.")
 
     def _request(self, method, path, **kwargs):
         require_identity()
-        headers = {"apikey": self.key, "Authorization": f"Bearer {self.key}",
-                   "Content-Type": "application/json", "Prefer": "return=representation"}
+        headers = {"apikey": self.key, "Content-Type": "application/json",
+                   "Prefer": "return=representation"}
+        # Las claves sb_secret_ no son JWT: el gateway las recibe en apikey.
+        # La cabecera Bearer se conserva para service_role JWT de instalaciones anteriores.
+        if not self.key.startswith("sb_secret_"):
+            headers["Authorization"] = f"Bearer {self.key}"
         try:
             r = requests.request(method, f"{self.url}/rest/v1/{path}",
                                  headers=headers, timeout=40, **kwargs)
         except requests.RequestException:
             raise DataError("No se recibió confirmación de Supabase. Reintenta la misma operación; conserva su identificador.", confirmed_rejected=False) from None
         if not r.ok:
+            if r.status_code == 401:
+                raise DataError("Supabase no autorizó el acceso (401). Comprueba en Secrets que SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY sean del mismo proyecto. Usa una clave secreta sb_secret_... o legacy service_role, vigente y completa; las claves anon y sb_publishable_... no dan acceso a esta aplicación.")
+            if r.status_code == 403:
+                raise DataError("Supabase denegó el acceso (403). Comprueba la clave privada del proyecto y los permisos de service_role sobre las tablas bodega_* y sus funciones.")
             if path == "rpc/bodega_guardar_producto_galeria" and r.status_code == 404:
                 raise DataError("Ejecuta database/04_galeria_y_bi.sql en Supabase para guardar varias imágenes.")
             if path == "rpc/bodega_guardar_producto_catalogo" and r.status_code == 404:
