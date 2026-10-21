@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="es">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+ <meta name="description" content="Bodega Marga: ventas, inventario y decisiones de reposición en una plataforma BI.">
+ <title>Bodega Marga · Tienda inteligente</title>
+ <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+ <header><a class="brand" href="#">◈ Bodega Marga</a><a class="link" href="#como">Cómo funciona ↗</a></header>
+ <main>
+  <section class="hero">
+   <div class="copy"><p class="eyebrow">TIENDA INTELIGENTE · LOS OLIVOS</p>
+    <h1>Conoce tu tienda.<br><em>Decide mejor.</em></h1>
+    <p class="lead">Registra cada venta, revisa tus existencias y prepara tu próxima compra con datos de tu bodega.</p>
+    <a id="dashboard-link" class="button disabled" aria-disabled="true">Abrir mi tienda <span>↗</span></a>
+    <p id="deployment-status" class="small">El acceso se habilitará cuando publiques el nuevo dashboard.</p>
+   </div>
+   <div class="preview"><div class="preview-head"><span>Tu bodega, de un vistazo</span><span class="pill">VISTA ILUSTRATIVA</span></div>
+    <div class="preview-body"><p class="small">Un ejemplo de las decisiones que podrás revisar</p>
+     <h2>Cada venta cuenta.</h2><div class="tiles"><div><span>Ventas</span><strong>Por día</strong></div><div><span>Inventario</span><strong>Al momento</strong></div></div>
+     <div class="barplot" role="img" aria-label="Gráfico ilustrativo de ventas"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+     <div class="alert"><span>●</span><div><strong>Compra con una razón clara</strong><small>Stock + ventas recientes + plazo del proveedor</small></div></div>
+    </div>
+   </div>
+  </section>
+  <section id="como"><p class="eyebrow">UN FLUJO SIMPLE</p><h2>De una venta a una decisión.</h2>
+   <div class="features"><article><b>01</b><h3>Registra</h3><p>Busca por código o nombre. Agrega artículos y confirma tu venta.</p></article>
+    <article><b>02</b><h3>Revisa</h3><p>Consulta stock, ventas, margen bruto estimado y artículos con pocas existencias.</p></article>
+    <article><b>03</b><h3>Repón</h3><p>Recibe una lista sugerida y entiende por qué conviene revisar cada producto.</p></article></div>
+  </section>
+  <section class="cloud"><strong>Tu información disponible en la nube.</strong><span>Streamlit · Supabase · Firebase</span></section>
+ </main>
+ <footer><span>Proyecto académico · Bodega Marga BI · 2026</span><span>Registro interno de ventas. No emite comprobantes electrónicos.</span></footer>
+ <div class="consent" id="consent"><p>Podemos medir visitas a esta página para mejorarla. La medición es opcional y no incluye información de tus ventas.</p><button id="accept">Aceptar medición</button><button id="reject">Continuar sin medición</button></div>
+ <script type="module" src="main.js"></script>
+</body></html>
