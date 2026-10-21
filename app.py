@@ -13,22 +13,11 @@ from bodega.repository import CloudRepository, DataError
 from bodega.demo import DemoRepository
 from bodega.imports import validate_csv, COLUMNS
 from bodega.analytics import prepare_sales, enrich_products, kpis, replenish, daily_series, forecast, csv_export
+from bodega import storefront
+from bodega.ui import inject_css, page_header, footer, valid_image_url
 
-st.set_page_config(page_title="Bodega Marga · BI", page_icon="🛒", layout="wide")
-st.markdown('''<style>
-.block-container{max-width:1450px;padding-top:2rem;padding-bottom:2rem}
-section[data-testid="stSidebar"]{background:#edf3ee;border-right:1px solid #d9e5dc}
-.brand{font-weight:800;font-size:1.4rem;letter-spacing:-.04em;color:#173b32}
-.kicker{font-size:.72rem;font-weight:750;letter-spacing:.15em;color:#127c64;margin-bottom:10px}
-.hero{border-radius:20px;background:#173b32;color:#fff;padding:30px 34px;margin:0 0 22px}
-.hero h1{font-size:2rem;letter-spacing:-.045em;color:#fff;margin:0 0 10px;padding:0}
-.hero p{color:#d0e6d7;max-width:800px;margin:0;font-size:1rem}
-.hero .kicker{color:#afdec6}
-div[data-testid="stMetric"]{background:white;border:1px solid #dfe9e1;padding:16px;border-radius:14px}
-div[data-testid="stMetricValue"]{font-weight:750;letter-spacing:-.04em}
-div[data-testid="stDataFrame"]{border:1px solid #dfe9e1;border-radius:12px}
-.stButton>button{border-radius:9px}
-</style>''', unsafe_allow_html=True)
+st.set_page_config(page_title="Bodega Marga · Tienda interna y BI", page_icon="🛒", layout="wide", initial_sidebar_state="collapsed")
+inject_css()
 
 ROOT = Path(__file__).resolve().parent
 TODAY = datetime.now(ZoneInfo("America/Lima")).date()
@@ -40,7 +29,7 @@ def soles(value):
 
 
 def hero(title, text):
-    st.markdown(f'<div class="hero"><div class="kicker">BODEGA MARGA · LOS OLIVOS</div><h1>{html.escape(title)}</h1><p>{html.escape(text)}</p></div>',unsafe_allow_html=True)
+    page_header(title, text)
 
 
 def chart(fig):
@@ -70,36 +59,8 @@ def go_to(page):
     st.session_state["page"]=page
 
 
-def home_page(products,sales,role):
-    hero("Tu bodega, de un vistazo", "Revisa el día y encuentra rápidamente tu próxima tarea.")
-    daily=sales.loc[sales.fecha==pd.Timestamp(TODAY)]
-    values=kpis(daily)
-    active=products.loc[products.activo] if not products.empty else products
-    low=active.loc[active.stock<=active.stock_minimo] if not active.empty else active
-    a,b,c=st.columns(3)
-    a.metric("Ventas de hoy",soles(values["ventas"])); b.metric("Artículos en alerta",len(low)); c.metric("Productos activos",len(active))
-    st.caption(f"Día de operación en Lima: {TODAY.strftime('%d/%m/%Y')}")
-    a,b=st.columns([1.4,1])
-    with a:
-        st.subheader("Tus tareas frecuentes")
-        if role in {"administrador","cajero"}:
-            st.button("+ Registrar venta",type="primary",on_click=go_to,args=("Registrar venta",))
-        st.button("Ver reposición sugerida",on_click=go_to,args=("Reposición",))
-        st.subheader("Últimas ventas")
-        if sales.empty:st.info("Aún no hay ventas.")
-        else:
-            recent=sales.groupby(["venta_id","fecha","medio_pago","origen"],as_index=False).agg(total=("ingreso","sum"),unidades=("cantidad","sum"))
-            st.dataframe(recent.sort_values(["fecha","venta_id"],ascending=False).head(8),hide_index=True,width="stretch")
-    with b:
-        st.subheader("Pendientes de revisar")
-        if low.empty:st.success("No hay artículos por debajo de su mínimo.")
-        else:st.dataframe(low[["nombre","stock","stock_minimo"]],hide_index=True,width="stretch")
-        st.button("Ir a inventario",on_click=go_to,args=("Inventario",))
-    if not sales.empty:
-        start=pd.Timestamp(TODAY)-pd.Timedelta(days=6)
-        chartdata=sales.loc[sales.fecha>=start].groupby("fecha").ingreso.sum().reindex(pd.date_range(start,TODAY),fill_value=0).rename_axis("fecha").reset_index(name="ingreso")
-        st.subheader("Ventas de los últimos 7 días")
-        chart(px.bar(chartdata,x="fecha",y="ingreso",color_discrete_sequence=["#127c64"],labels={"ingreso":"Ventas S/","fecha":"Día"}))
+def home_page(products, sales, role):
+    storefront.home_page(products, sales, role, chart, TODAY)
 
 
 def overview(products,sales):
@@ -157,61 +118,8 @@ def overview(products,sales):
         export_button(table,"ventas_bodega_marga.csv")
 
 
-def sale_page(repo,products,role):
-    hero("Registra una venta", "Busca por nombre o código, agrega artículos y confirma la venta.")
-    if role not in {"administrador","cajero"}:
-        st.info("Tu rol permite consultar el análisis. El registro de ventas corresponde a caja o administración."); return
-    if "pending_sale" in st.session_state:
-        pending=st.session_state.pending_sale
-        st.warning("La venta está pendiente de confirmación. Reintenta con los mismos datos para evitar duplicarla.")
-        st.write(pd.DataFrame(pending["items"]))
-        if st.button("Reintentar venta pendiente",type="primary"):
-            result=repo.sale(pending["op"],pending["items"],pending["payment"])
-            del st.session_state["pending_sale"]; st.session_state["cart"]=[]
-            finish(f'Venta {result["venta_id"]} confirmada · {soles(float(result["total"]))}')
-        return
-    active=products.loc[products.activo & (products.stock>0)] if not products.empty else products
-    if active.empty:
-        st.info("No hay productos con existencias. Administración debe registrar el catálogo y las entradas."); return
-    cart=st.session_state.setdefault("cart",[])
-    options={int(p.id):f"{p.nombre} · {p.codigo} · {soles(p.precio)} · {p.stock:g} u." for p in active.itertuples()}
-    with st.form("add_to_cart",clear_on_submit=True):
-        a,b,c=st.columns([3,1,1])
-        pid=a.selectbox("Producto · escribe el código o nombre",list(options),format_func=options.get)
-        qty=b.number_input("Cantidad",min_value=1,max_value=100000,value=1,step=1)
-        disc=c.number_input("Descuento de esta línea S/",min_value=0.0,value=0.0,step=.1)
-        add=st.form_submit_button("Agregar al carrito")
-    if add:
-        p=active.loc[active.id==pid].iloc[0]
-        old=next((x for x in cart if x["producto_id"]==pid),None)
-        totalqty=qty+(old["cantidad"] if old else 0)
-        totaldisc=round(disc+(old["descuento"] if old else 0),2)
-        if totalqty>p.stock or totaldisc>totalqty*p.precio:
-            st.error("Revisa la cantidad, el descuento y el stock disponible.")
-        elif old:
-            old.update(cantidad=totalqty,descuento=totaldisc)
-        else: cart.append({"producto_id":pid,"cantidad":qty,"descuento":round(disc,2)})
-    if not cart:
-        st.caption("Tu carrito está vacío."); return
-    rows=[]
-    for x in cart:
-        p=products.loc[products.id==x["producto_id"]].iloc[0]
-        rows.append({"Producto":p.nombre,"Cantidad":x["cantidad"],"Precio S/":p.precio,
-            "Descuento S/":x["descuento"],"Total S/":round(x["cantidad"]*p.precio-x["descuento"],2)})
-    st.dataframe(pd.DataFrame(rows),hide_index=True,width="stretch")
-    a,b=st.columns(2)
-    payment=a.selectbox("Medio de pago",["Efectivo","Yape","Plin","Tarjeta","Transferencia"])
-    b.metric("Total a cobrar",soles(sum(r["Total S/"] for r in rows)))
-    if st.button("Confirmar venta",type="primary"):
-        pending={"op":str(uuid4()),"items":[dict(x) for x in cart],"payment":payment}
-        st.session_state["pending_sale"]=pending
-        result=repo.sale(pending["op"],pending["items"],pending["payment"])
-        del st.session_state["pending_sale"]; st.session_state["cart"]=[]
-        notify(repo,"venta_confirmada")
-        finish(f'Venta {result["venta_id"]} confirmada · {soles(float(result["total"]))}')
-    if st.button("Vaciar carrito"):
-        st.session_state["cart"]=[]; st.rerun()
-    st.caption("El precio y el stock se verifican al confirmar. Registro interno: no emite comprobantes electrónicos.")
+def sale_page(repo, products, role, sales):
+    storefront.sale_page(repo, products, role, finish, notify, sales)
 
 
 def inventory_page(repo,products,role):
@@ -242,14 +150,21 @@ def inventory_page(repo,products,role):
             cost=b.number_input("Costo de referencia S/",min_value=0.0,value=float(p.get("costo",0)),step=.1)
             minimum=a.number_input("Stock mínimo",min_value=0,value=int(p.get("stock_minimo",5)),step=1)
             lead=b.number_input("Plazo del proveedor (días)",min_value=0,max_value=90,value=int(p.get("plazo_dias",2)),step=1)
+            st.markdown("**Información del producto**")
+            description=st.text_area("Descripción",value=p.get("descripcion", ""),max_chars=1500,height=100)
+            brand=a.text_input("Marca",value=p.get("marca", ""),max_chars=80)
+            presentation=b.text_input("Presentación",value=p.get("presentacion", ""),max_chars=120,placeholder="Ej. bolsa de 1 kg")
+            image_url=st.text_input("URL HTTPS de la foto",value=p.get("imagen_url", ""),max_chars=2048,placeholder="https://...")
             enabled=st.checkbox("Producto activo",value=bool(p.get("activo",True)))
             submit=st.form_submit_button("Guardar producto",type="primary")
         if submit:
             if not all(x.strip() for x in [code,name,category,supplier]): st.error("Completa los campos de texto.")
+            elif not valid_image_url(image_url.strip()): st.error("La foto debe usar una dirección HTTPS válida.")
             else:
                 repo.save_product({"id":int(pid) if pid is not None else None,"codigo":code.strip(),"nombre":name.strip(),
                     "categoria":category.strip(),"proveedor":supplier.strip(),"precio":round(price,2),"costo":round(cost,2),
-                    "stock_minimo":minimum,"plazo_dias":lead,"activo":enabled})
+                    "stock_minimo":minimum,"plazo_dias":lead,"activo":enabled,
+                    "descripcion":description.strip(),"marca":brand.strip(),"presentacion":presentation.strip(),"imagen_url":image_url.strip()})
                 notify(repo,"producto_guardado"); finish("Producto guardado. Registra una entrada para cargar existencias.")
         st.caption("El catálogo nunca modifica stock. Las ventas conservan el precio y costo que tenían al registrarse.")
     with movement:
@@ -302,7 +217,7 @@ def inventory_page(repo,products,role):
                         st.session_state["pending_annul"]=pending
                         repo.annul(**pending); del st.session_state["pending_annul"]
                         notify(repo,"venta_anulada"); finish("Venta anulada. El tablero excluye sus líneas.")
-        st.caption("Anular una venta POS devuelve sus unidades al stock. Anular historia importada solo corrige el análisis. No reemplaza un proceso de devoluciones parciales.")
+        st.caption("La anulación corrige un ticket completo: restituye el stock de una venta POS y excluye sus importes del BI.")
 
 
 def replenish_page(repo,products,sales,role):
@@ -448,7 +363,7 @@ def activity_page(repo,role):
 def main():
     app_mode=mode()
     if app_mode=="demo":
-        st.warning("DEMOSTRACIÓN · datos sintéticos. Los cambios viven solo en esta sesión y se pierden al cerrarla.")
+        
         if "demo_repo" not in st.session_state:
             st.session_state["demo_repo"]=DemoRepository()
         repo=st.session_state["demo_repo"]
@@ -475,29 +390,19 @@ def main():
             logout(); st.error(str(exc)); return
         role=identity["role"]
         repo=CloudRepository()
-    with st.sidebar:
-        st.markdown('<div class="brand">🛒 Bodega Marga</div><div class="kicker">TIENDA INTELIGENTE · BI</div>',unsafe_allow_html=True)
-        st.caption(f"{'Demostración' if app_mode=='demo' else 'Nube'} · {role}")
-        available=PAGES if role=="administrador" else [p for p in PAGES if p!="Importar historial" and (role=="cajero" or p!="Registrar venta")]
-        page=st.radio("Tu espacio",available,key="page")
-        st.divider()
-        if app_mode=="demo":
-            if st.button("Reiniciar demostración"):
-                logout(); st.rerun()
-        elif st.button("Cerrar sesión"):
-            logout(); st.rerun()
-        st.caption("Los Olivos, Lima · soles (PEN)")
-    if "flash" in st.session_state: st.success(st.session_state.pop("flash"))
     products=enrich_products(repo.table("bodega_productos"),repo.table("bodega_categorias"),repo.table("bodega_proveedores"))
     sales=prepare_sales(repo.table("bodega_v_ventas"))
+    page=storefront.topbar(products,role,app_mode,logout)
+    if "flash" in st.session_state: st.success(st.session_state.pop("flash"))
     if page=="Inicio":home_page(products,sales,role)
     elif page=="Resumen BI": overview(products,sales)
-    elif page=="Registrar venta": sale_page(repo,products,role)
+    elif page=="Registrar venta": sale_page(repo,products,role,sales)
     elif page=="Inventario": inventory_page(repo,products,role)
     elif page=="Reposición": replenish_page(repo,products,sales,role)
     elif page=="Pronóstico": forecast_page(repo,products,sales,role)
     elif page=="Importar historial": import_page(repo,products,role)
     else: activity_page(repo,role)
+    footer()
 
 
 try:

@@ -1,10 +1,17 @@
 {
   "python_tests": {
-    "passed": 19,
-    "skipped": 4,
+    "passed": 33,
+    "skipped": 5,
     "skip_reason": "PostgreSQL real se ejecuta en CI o con TEST_DATABASE_URL"
   },
-  "embedded_postgresql_checks": 14,
+  "embedded_postgresql_checks": 18,
+  "browser_qa": {
+    "engine": "Chromium 131",
+    "viewports": [[1440, 1000], [390, 844]],
+    "demo_flow": "ficha → agregar → carrito lateral → cambiar cantidad → caja → Yape → confirmar → BI",
+    "mobile_catalog_columns": 2,
+    "horizontal_overflow": false
+  },
   "remote_deployment_verified": false,
   "versions_tested": {
     "streamlit": "1.66.0",

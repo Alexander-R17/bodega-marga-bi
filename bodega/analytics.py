@@ -23,7 +23,13 @@ def enrich_products(products, categories, suppliers):
     for col in ["precio", "costo", "stock", "stock_minimo", "plazo_dias"]:
         df[col] = pd.to_numeric(df[col], errors="raise")
     df = df.merge(categories.rename(columns={"id": "categoria_id", "nombre": "categoria"}), on="categoria_id")
-    return df.merge(suppliers.rename(columns={"id": "proveedor_id", "nombre": "proveedor"}), on="proveedor_id")
+    df = df.merge(suppliers.rename(columns={"id": "proveedor_id", "nombre": "proveedor"}), on="proveedor_id")
+    for field in ["descripcion", "marca", "presentacion", "imagen_url"]:
+        if field not in df:
+            df[field] = ""
+        else:
+            df[field] = df[field].fillna("").astype(str)
+    return df
 
 
 def kpis(sales):

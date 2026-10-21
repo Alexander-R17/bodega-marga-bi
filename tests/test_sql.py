@@ -26,6 +26,8 @@ def db():
     conn.execute("DO $$ BEGIN CREATE ROLE service_role BYPASSRLS; EXCEPTION WHEN duplicate_object THEN NULL; END $$")
     conn.execute((ROOT/"database/01_bodega_schema.sql").read_text())
     conn.execute((ROOT/"database/01_bodega_schema.sql").read_text())
+    conn.execute((ROOT/"database/03_catalogo_visual.sql").read_text())
+    conn.execute((ROOT/"database/03_catalogo_visual.sql").read_text())
     conn.execute("TRUNCATE bodega_productos,bodega_categorias,bodega_proveedores,bodega_tiempo,bodega_ventas,bodega_detalle_venta,bodega_movimientos,bodega_operaciones,bodega_staging,bodega_lotes,bodega_predicciones,bodega_eventos,bodega_reposiciones RESTART IDENTITY CASCADE")
     conn.execute((ROOT/"database/02_catalogo_demo_OPCIONAL.sql").read_text())
     yield conn
@@ -74,6 +76,22 @@ def test_db_private_tables_and_rpc(db):
     db.execute("SET ROLE anon")
     with pytest.raises(psycopg.Error):db.execute("select * from bodega_productos")
     with pytest.raises(psycopg.Error):sell(db,uuid4(),[{"producto_id":1,"cantidad":1,"descuento":0}])
+    with pytest.raises(psycopg.Error):db.execute("select bodega_guardar_producto_catalogo('{}'::jsonb)")
+
+
+def test_catalog_metadata_preserves_stock_and_historical_sales(db):
+    import psycopg
+    db.execute("SET ROLE service_role")
+    sell(db,uuid4(),[{"producto_id":1,"cantidad":1,"descuento":0}])
+    payload={"id":1,"codigo":"7750001000011","nombre":"Arroz extra 1 kg","categoria":"Abarrotes",
+        "proveedor":"Proveedor prueba","precio":5.2,"costo":3.6,"stock_minimo":5,"plazo_dias":2,"activo":True,
+        "descripcion":"Arroz embolsado","marca":"Marca de prueba","presentacion":"1 kg","imagen_url":"https://example.com/arroz.png"}
+    db.execute("select bodega_guardar_producto_catalogo(%s::jsonb)",(json.dumps(payload),))
+    assert db.execute("select stock,descripcion,imagen_url from bodega_productos where id=1").fetchone()==(7,"Arroz embolsado","https://example.com/arroz.png")
+    assert float(db.execute("select precio_unitario from bodega_detalle_venta").fetchone()[0])==4.8
+    payload.update(precio=999,imagen_url="http://example.com/no.png")
+    with pytest.raises(psycopg.Error):db.execute("select bodega_guardar_producto_catalogo(%s::jsonb)",(json.dumps(payload),))
+    assert float(db.execute("select precio from bodega_productos where id=1").fetchone()[0])==5.2
 
 
 def test_concurrent_sales_cannot_oversell(db):

@@ -2,6 +2,8 @@
 
 Esta entrega contiene código preparado y pruebas locales. No ha creado un nuevo repositorio remoto, ejecutado SQL en tu Supabase ni desplegado tus cuentas. Los pasos siguientes conectan el proyecto a tus servicios. No pegues secretos en un chat o en GitHub.
 
+Si ya publicaste la versión anterior, usa [la guía de actualización](../ACTUALIZAR_DISENO_TIENDA.md). Las instrucciones siguientes corresponden a una instalación nueva.
+
 ## 1. Repositorio nuevo
 
 En GitHub crea `bodega-marga-bi` en tu cuenta `Alexander-R17`. Descomprime la entrega y sube **el contenido de `bodega-marga-bi`** al repositorio: `app.py` debe quedar en la raíz, junto a `requirements.txt`, `bodega/` y `database/`. No subas el ZIP como único archivo: Streamlit necesita el código extraído.
@@ -15,6 +17,7 @@ No copies las carpetas anteriores al repositorio nuevo. Esta entrega sustituye l
 Puedes usar tu proyecto existente o uno nuevo para el piloto. Si conservas el existente, el script crea tablas `bodega_*` y deja intactas `dimambiente`, `dimedificio`, `dimocupacion`, `dimtiempo`, `fact_consumo_energetico`, predicciones, sesiones, usuarios y staging del campus.
 
 1. Abre SQL Editor, crea una consulta y ejecuta completo **`database/01_bodega_schema.sql`**.
+   A continuación ejecuta **`database/03_catalogo_visual.sql`**, que añade la ficha visual de productos.
 2. Comprueba en Table Editor que existan `bodega_productos`, `bodega_ventas`, `bodega_detalle_venta` y `bodega_movimientos`.
 3. Obtén la URL del proyecto y la clave **legacy service_role** en la configuración de API. Esa clave va exclusivamente en **Secrets del servidor Streamlit**; no se utiliza una clave pública para operaciones privadas. El cliente de esta entrega usa el formato JWT legacy en Authorization.
 4. Mantén accesibles las tablas en el esquema `public` para la Data API. El script activa RLS y revoca acceso a `anon` y `authenticated` en los objetos nuevos. El servidor verificado usa `service_role`.

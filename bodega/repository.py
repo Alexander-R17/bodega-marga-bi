@@ -27,6 +27,8 @@ class CloudRepository:
         except requests.RequestException:
             raise DataError("No se recibió confirmación de Supabase. Reintenta la misma operación; conserva su identificador.", confirmed_rejected=False) from None
         if not r.ok:
+            if path == "rpc/bodega_guardar_producto_catalogo" and r.status_code == 404:
+                raise DataError("Ejecuta database/03_catalogo_visual.sql en Supabase para guardar las fotos y fichas del catálogo.")
             try:
                 msg = r.json().get("message", "")
             except ValueError:
@@ -71,7 +73,7 @@ class CloudRepository:
 
     def save_product(self, product):
         require_role("administrador")
-        return self._request("POST", "rpc/bodega_guardar_producto", json={"p_producto": product})
+        return self._request("POST", "rpc/bodega_guardar_producto_catalogo", json={"p_producto": product})
 
     def create_batch(self, batch_id, name, sha, records):
         return self.rpc("bodega_crear_lote", {"p_id": batch_id, "p_nombre": name,
