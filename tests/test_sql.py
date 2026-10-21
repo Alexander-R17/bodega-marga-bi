@@ -28,6 +28,8 @@ def db():
     conn.execute((ROOT/"database/01_bodega_schema.sql").read_text())
     conn.execute((ROOT/"database/03_catalogo_visual.sql").read_text())
     conn.execute((ROOT/"database/03_catalogo_visual.sql").read_text())
+    conn.execute((ROOT/"database/04_galeria_y_bi.sql").read_text())
+    conn.execute((ROOT/"database/04_galeria_y_bi.sql").read_text())
     conn.execute("TRUNCATE bodega_productos,bodega_categorias,bodega_proveedores,bodega_tiempo,bodega_ventas,bodega_detalle_venta,bodega_movimientos,bodega_operaciones,bodega_staging,bodega_lotes,bodega_predicciones,bodega_eventos,bodega_reposiciones RESTART IDENTITY CASCADE")
     conn.execute((ROOT/"database/02_catalogo_demo_OPCIONAL.sql").read_text())
     yield conn
@@ -107,3 +109,20 @@ def test_concurrent_sales_cannot_oversell(db):
         results=list(pool.map(lambda _:attempt(),range(2)))
     assert sum(results)==1
     assert db.execute("select stock from bodega_productos where id=1").fetchone()[0]==2
+
+
+def test_gallery_and_sql_cube_preserve_operational_data(db):
+    import psycopg
+    db.execute("SET ROLE service_role")
+    sell(db,uuid4(),[{"producto_id":1,"cantidad":1,"descuento":0},{"producto_id":4,"cantidad":1,"descuento":0}])
+    payload={"id":1,"codigo":"7750001000011","nombre":"Arroz extra 1 kg","categoria":"Abarrotes","proveedor":"Proveedor",
+        "precio":4.8,"costo":3.6,"stock_minimo":5,"plazo_dias":2,"activo":True,"imagenes_urls":["https://example.com/1.png","https://example.com/2.png","https://example.com/1.png"]}
+    db.execute("select bodega_guardar_producto_galeria(%s::jsonb)",(json.dumps(payload),))
+    assert db.execute("select stock,imagen_url,imagenes_urls from bodega_productos where id=1").fetchone()==(7,"https://example.com/1.png",["https://example.com/1.png","https://example.com/2.png"])
+    payload.update(precio=999,imagenes_urls=["http://bad.example.com/image.png"])
+    with pytest.raises(psycopg.Error):db.execute("select bodega_guardar_producto_galeria(%s::jsonb)",(json.dumps(payload),))
+    assert float(db.execute("select precio from bodega_productos where id=1").fetchone()[0])==4.8
+    assert db.execute("select tickets from bodega_v_cubo_ventas where mascara_agrupacion=7").fetchone()[0]==1
+    db.execute("RESET ROLE; SET ROLE anon")
+    with pytest.raises(psycopg.Error):db.execute("select * from bodega_v_cubo_ventas")
+    with pytest.raises(psycopg.Error):db.execute("select bodega_guardar_producto_galeria('{}'::jsonb)")

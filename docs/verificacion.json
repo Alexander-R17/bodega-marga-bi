@@ -1,20 +1,34 @@
 {
   "python_tests": {
-    "passed": 33,
-    "skipped": 5,
+    "passed": 46,
+    "skipped": 6,
     "skip_reason": "PostgreSQL real se ejecuta en CI o con TEST_DATABASE_URL"
   },
-  "embedded_postgresql_checks": 18,
+  "embedded_postgresql_checks": 26,
   "browser_qa": {
     "engine": "Chromium 131",
-    "viewports": [[1440, 1000], [390, 844]],
+    "viewports": [
+      [
+        1440,
+        1000
+      ],
+      [
+        390,
+        844
+      ]
+    ],
     "demo_flow": "ficha → agregar → carrito lateral → cambiar cantidad → caja → Yape → confirmar → BI",
     "mobile_catalog_columns": 2,
-    "horizontal_overflow": false
+    "horizontal_overflow": false,
+    "checks": 22,
+    "bi_pages": 6,
+    "gallery_hover_verified": true,
+    "ordered_funnel_verified": true,
+    "page_errors": []
   },
   "remote_deployment_verified": false,
   "versions_tested": {
-    "streamlit": "1.66.0",
+    "streamlit": "1.66.1",
     "pandas": "2.2.3",
     "numpy": "2.3.5",
     "plotly": "6.9.0",

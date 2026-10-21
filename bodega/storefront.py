@@ -9,6 +9,8 @@ from bodega import cart as rules
 from bodega.analytics import kpis
 from bodega.repository import DataError
 from bodega.ui import page_header, product_image, image_source, svg_uri, ROOT, status_badge
+from bodega.media import product_urls
+from bodega.telemetry import record
 
 PAGES = ["Inicio", "Registrar venta", "Inventario", "Resumen BI", "Reposición", "Pronóstico", "Importar historial", "Actividad y datos"]
 NAV_LABELS = {"Inicio":"Inicio", "Registrar venta":"Tienda interna", "Inventario":"Inventario",
@@ -124,11 +126,14 @@ def cart_drawer(products, role):
 
 
 @st.dialog("Detalle del producto", width="large", on_dismiss="rerun")
-def product_dialog(products, product_id, role):
+def product_dialog(products, product_id, role, repo=None):
     p = rules.product_row(products, product_id)
     left, right = st.columns([1.05, 1], gap="large")
     with left:
-        product_image(p, "product-detail-image")
+        urls=product_urls(p)
+        selected=st.radio("Vista del producto",range(len(urls)),format_func=lambda i:f"Foto {i+1}",
+            horizontal=True,key=f"detail_photo_{product_id}") if len(urls)>1 else 0
+        product_image(p, "product-detail-image",selected)
     with right:
         st.markdown(f'<span class="eyebrow">{html.escape(str(p.categoria))}</span><h2 class="product-detail-title">{html.escape(str(p.nombre))}</h2>'
             f'<div class="product-code">CÓDIGO {html.escape(str(p.codigo))}</div><div class="detail-price">{soles(p.precio)}</div>'
@@ -138,6 +143,7 @@ def product_dialog(products, product_id, role):
         if st.button("Agregar al carrito", type="primary", width="stretch", key=f"detail_add_{product_id}",
                      disabled=int(p.stock) == 0 or not _editable(role)):
             _add(products, product_id, qty, role)
+            if repo: record(repo,"carrito_agregado",str(product_id))
             st.session_state["flash"] = f"{p.nombre} agregado a la venta."
             st.rerun(scope="app")
         with st.expander("INFORMACIÓN DEL PRODUCTO", expanded=True):
@@ -255,7 +261,7 @@ def filter_catalog(products, query="", category="Todos los productos", price_ran
     return data.sort_values("nombre")
 
 
-def catalog_page(products, sales, role):
+def catalog_page(products, sales, role, repo=None):
     st.markdown(f'<section class="catalog-banner"><div><span class="eyebrow">INICIO / TIENDA INTERNA</span><h1>Catálogo de productos</h1><p>Encuentra un artículo, consulta su información y agrégalo a la venta.</p></div><img src="{svg_uri(ROOT/"assets/hero_tienda.svg")}" alt="Bodega Marga"></section>', unsafe_allow_html=True)
     filters, content = st.columns([1.05, 5], gap="large")
     with filters:
@@ -291,9 +297,11 @@ def catalog_page(products, sales, role):
                                 f'<p class="product-card-name">{html.escape(product["nombre"])}</p><p class="product-card-price">{soles(product["precio"])}</p>'
                                 f'<p class="product-code">{int(product["stock"])} unidades disponibles</p>', unsafe_allow_html=True)
                             if st.button("Ver producto", key=f"detail_{pid}", width="stretch"):
-                                product_dialog(products, pid, role)
+                                if repo:record(repo,"producto_visto",str(pid))
+                                product_dialog(products, pid, role, repo)
                             if st.button("Agregar al carrito", key=f"add_{pid}", width="stretch", type="primary", disabled=int(product["stock"]) == 0 or not _editable(role)):
                                 _add(products, pid, 1, role)
+                                if repo:record(repo,"carrito_agregado",str(pid))
                                 st.session_state["flash"] = f'{product["nombre"]} agregado a la venta.'
                                 st.rerun()
         if count < len(result) and st.button("Cargar más productos", width="stretch"):
@@ -373,4 +381,4 @@ def sale_page(repo, products, role, finish, notify, sales):
     if st.session_state.get("shop_view") == "carrito" or "pending_sale" in st.session_state:
         checkout_page(repo, products, role, finish, notify)
     else:
-        catalog_page(products, sales, role)
+        catalog_page(products, sales, role, repo)

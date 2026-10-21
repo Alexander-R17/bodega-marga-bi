@@ -7,13 +7,15 @@ La aplicación principal está en **`app.py`**. Funciona con Python y Streamlit;
 ## Qué incluye
 
 - Interfaz inspirada en las capturas Wix: menú superior, catálogo ilustrado con filtros, ficha de producto, carrito lateral y caja interna.
-- Resumen BI con filtros de fechas, categoría y origen; ventas, tickets, margen bruto, tendencias y stock bajo.
+- BI en seis páginas: resumen, ventas/rentabilidad, diagnóstico/inventario, cubo OLAP, predicciones y almacén/uso.
+- OLAP con Slice, Dice, Drill-down, Roll-up, Pivot y cubo con subtotales; filtros de fechas, año, mes, producto, categoría, proveedor, pago y origen.
+- Galería de hasta ocho URL por producto, cambio de imagen al pasar el cursor y selección de fotos en la ficha.
 - Venta con carrito, búsqueda por código o nombre, descuento por línea y medio de pago.
 - Catálogo, entradas, costo promedio ponderado, ajustes por conteo y mermas.
 - Anulación completa de ventas con trazabilidad y devolución de stock para operaciones POS.
 - Inicio con ventas del día y accesos rápidos; lista de reposición explicada y decisiones con motivo.
 - CSV histórico → validación → staging persistente → hechos de ventas → BI.
-- Pronóstico por producto: promedio móvil, referencia semanal y Random Forest; comparación temporal de 28 días.
+- Pronóstico de 1 a 20 productos: promedio móvil, referencia semanal y Random Forest; validación temporal de 28 días, ingresos orientativos y escenario de existencias.
 - Roles administrador, cajero y analista; exportaciones CSV; eventos de uso sin datos de clientes.
 - Pruebas y configuración de GitHub Actions con PostgreSQL 16.
 
@@ -24,13 +26,14 @@ Lee **[docs/01_DESPLIEGUE_NUBE.md](docs/01_DESPLIEGUE_NUBE.md)**. Todo puede hac
 1. Crea un repositorio nuevo, por ejemplo `bodega-marga-bi`, y sube el contenido de esta carpeta a su raíz.
 2. Ejecuta **`database/01_bodega_schema.sql`** en Supabase.
    Después ejecuta **`database/03_catalogo_visual.sql`** para guardar descripción, marca, presentación y foto del producto.
+   Finalmente ejecuta **`database/04_galeria_y_bi.sql`** para la galería, el cubo SQL y los eventos por sesión.
 3. Habilita Email/Password en Firebase Authentication y crea las cuentas del personal.
 4. Despliega `app.py` en Streamlit Community Cloud con Python 3.12.
 5. Completa Settings → Secrets usando `.streamlit/secrets.toml.example`; utiliza `APP_MODE = "cloud"`.
 6. Copia la nueva URL de Streamlit en `hosting/config.js` y despliega Hosting.
 7. Crea el catálogo, registra el conteo inicial y haz una venta de prueba.
 
-**Si tu proyecto ya está funcionando**, sigue [ACTUALIZAR_DISENO_TIENDA.md](ACTUALIZAR_DISENO_TIENDA.md). La actualización visual se sube al mismo repositorio y conserva su configuración. Solo añade el SQL `03_catalogo_visual.sql`; no requiere volver a cargar el catálogo demo.
+**Si tu proyecto ya está funcionando con la ficha visual**, sigue [ACTUALIZAR_DISENO_TIENDA.md](ACTUALIZAR_DISENO_TIENDA.md). Añade `04_galeria_y_bi.sql` y sube el código al mismo repositorio. No vuelvas a cargar los datos demo sobre el negocio real.
 
 ## Demostración
 
@@ -52,6 +55,7 @@ El modelo cubre **una bodega**. La expansión SaaS a varias bodegas exige aislam
 - [Referencias académicas y técnicas](docs/04_REFERENCIAS.md)
 - [Validación y recorrido de prueba](docs/05_VALIDACION.md)
 - [Actualizar la interfaz existente](ACTUALIZAR_DISENO_TIENDA.md)
+- [Páginas BI, cubos y galería](docs/06_BI_Y_GALERIA.md)
 
 ## Verificación de desarrollo
 

@@ -37,6 +37,7 @@ El grano de ventas es **una línea de producto por ticket**. Un ticket puede ten
 | `bodega_reposiciones` | Decisión, motivo y contexto de la sugerencia |
 | `bodega_eventos` | Eventos de uso de la aplicación, sin datos de compradores |
 | `bodega_v_ventas` | Vista semántica para BI, con ventas completadas |
+| `bodega_v_cubo_ventas` | Cubo virtual mensual/categoría/pago con subtotales, sin duplicar hechos |
 
 Las dimensiones de producto/categoría/proveedor reflejan los valores actuales al consultar. El precio y costo de cada venta sí se preservan como instantánea. No se implementan dimensiones con historia de cambios tipo SCD 2: si se reclasifica un producto, sus ventas previas se mostrarán con su categoría vigente.
 
@@ -67,11 +68,14 @@ El SQL concede tablas, vista y RPC comerciales exclusivamente a `service_role` y
 | Objetivo de stock | max(mínimo, ceil(velocidad × (plazo + cobertura))) | Regla explicable para revisar compras |
 | Unidades por comprar | max(0, objetivo − stock) | No considera pedidos pendientes |
 | WAPE | Σ\|real − pronóstico\| / Σ\|real\| | Menor es mejor; sin ventas positivas es indefinido |
-| Índice de exactitud | 100 × (1 − WAPE) | Puede ser negativo; no es certeza ni probabilidad |
+| Margen bruto % | 100 × margen total / ventas totales | Se recalcula en cada subtotal |
+| Cobertura en días | Stock actual / unidades realizadas por día en 28 días | Indefinida si no hubo ventas; no mide demanda perdida |
+| Ingreso orientativo | Unidades previstas × precio actual | Supone precio constante y no incluye descuentos futuros |
+| Conversión observada | Sesiones con recorrido completo / sesiones con catálogo abierto | Embudo interno ordenado; no mide clientes únicos ni abandono definitivo |
 
 ## Protocolo del pronóstico
 
-1. Seleccionar un producto y un período completo de al menos 84 días. El usuario certifica que días sin líneas son ceros reales de ventas; si hubo faltantes o registros omitidos, se detiene la evaluación hasta delimitar/corregir el período.
+1. Seleccionar de uno a veinte productos y un período completo de al menos 84 días. El usuario certifica que días sin líneas son ceros reales de ventas; si hubo faltantes o registros omitidos, se detiene la evaluación hasta delimitar/corregir el período.
 2. Reservar los últimos 28 días; usar los anteriores para entrenar (mínimo 56).
 3. Calcular referencias de promedio de los últimos 28 días y repetición de la semana anterior.
 4. Entrenar Random Forest con lags 1/7/14, promedios de 7/28 días y calendario. No se utiliza cantidad futura ni variables derivadas de la venta a pronosticar.

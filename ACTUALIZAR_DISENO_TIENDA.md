@@ -1,6 +1,10 @@
-# Actualizar Bodega Marga con el diseño de tienda
+# Actualizar Bodega Marga: galería y BI por páginas
 
 Esta versión adapta el estilo de las capturas Wix a la aplicación existente de Streamlit. Conserva Bodega Marga, los productos de abarrotes y los ocho módulos de operación y BI. La entrega contiene los archivos actualizados; todavía debes subirlos a tu repositorio para que aparezcan en tu aplicación publicada.
+
+La ampliación nueva mantiene ese diseño y añade seis páginas BI, operaciones OLAP, proyecciones de varios productos y varias imágenes por URL. Si ya aplicaste `03_catalogo_visual.sql`, el único SQL nuevo es **`04_galeria_y_bi.sql`**.
+
+Para modo nube, aplica primero el SQL del apartado 2 y después publica los archivos en GitHub. Si personalizaste `hosting/config.js`, conserva los valores de tu sitio: las rutas de la tabla siguiente contienen la actualización del dashboard.
 
 ## Qué cambia
 
@@ -10,6 +14,8 @@ Esta versión adapta el estilo de las capturas Wix a la aplicación existente de
 - Ficha con imagen, precio, cantidad e información del producto: descripción, categoría, proveedor, marca y presentación cuando existan.
 - Carrito lateral para revisar artículos y cambiar cantidades; carrito completo con descuento por línea y resumen de la venta.
 - Selección entre Efectivo, Yape, Plin, Tarjeta y Transferencia antes de confirmar.
+- Botón **Agregar otra URL de imagen referencial**, hasta ocho imágenes, cambio al pasar el cursor y selección Foto 1/Foto 2 en la ficha.
+- BI con navegación propia: Resumen ejecutivo, Ventas y rentabilidad, Diagnóstico e inventario, Cubo OLAP, Predicciones y Datos y uso.
 
 No hay secciones de contacto, políticas de envío ni políticas de devoluciones. El sistema registra pagos recibidos en caja; no procesa tarjetas, Yape ni Plin mediante una pasarela. La anulación administrativa por error se conserva en Inventario porque corrige el registro interno y mantiene la trazabilidad.
 
@@ -27,26 +33,31 @@ No hay secciones de contacto, políticas de envío ni políticas de devoluciones
 | `bodega/storefront.py` | Inicio, catálogo, ficha de producto, carrito y caja |
 | `bodega/cart.py` y `bodega/ui.py` | Validación del carrito, imágenes y presentación |
 | `bodega/analytics.py` y `bodega/repository.py` | Compatibilidad con las fichas visuales y su guardado |
+| `bodega/media.py` y `bodega/telemetry.py` | Galería por URL y eventos internos medidos |
+| `bodega/bi.py` y `bodega/bi_pages.py` | Agregaciones, filtros, cubos y páginas BI |
+| `bodega/forecasting.py` y `bodega/prediction_page.py` | Evaluación por producto, escenarios y consulta de pronósticos |
 | `assets/` completa | CSS, ilustración de la tienda e imágenes de los productos |
 | `data/productos_demo.csv` | Descripciones y presentaciones de la demostración |
 | `.streamlit/config.toml` | Colores base del nuevo diseño |
 | `database/03_catalogo_visual.sql` | Migración adicional para Supabase |
+| `database/04_galeria_y_bi.sql` | Galería, vista de cubo SQL y eventos por sesión |
 | `tests/` y `.github/workflows/tests.yml` | Verificaciones de aplicación y PostgreSQL |
 
 5. Guarda con **Commit changes** en la rama que usa tu app, normalmente `main`. La carpeta `.streamlit` puede no mostrarse en algunos exploradores; verifica su archivo en GitHub. Conserva tus Secrets en Streamlit.
 
-## 2. Añadir la ficha visual en Supabase
+## 2. Aplicar el SQL nuevo en Supabase
 
 Si usas `APP_MODE = "demo"`, puedes ver el diseño inmediatamente; la demostración no requiere ejecutar SQL ni utiliza Supabase.
 
 Para guardar fichas en modo nube:
 
 1. Abre tu proyecto de Supabase → **SQL Editor → New query**.
-2. Copia completo `database/03_catalogo_visual.sql` y pulsa **Run**.
-3. Este SQL presupone que ya ejecutaste `01_bodega_schema.sql`. Añade cuatro campos de producto y una función privada para guardarlos. Se puede volver a ejecutar; conserva el stock, las ventas y el historial.
-4. No necesitas volver a ejecutar el catálogo opcional ni importar nuevamente las ventas de ejemplo.
+2. Si ya guardabas fotos y descripciones con la versión anterior, ejecuta completo **`database/04_galeria_y_bi.sql`**. La copia independiente entregada se llama `Bodega_Marga_Galeria_BI.sql` y tiene el mismo contenido.
+3. Si aún no aplicaste `03_catalogo_visual.sql`, ejecútalo antes del `04`. Ambos presuponen que existe el esquema base `01`.
+4. El `04` conserva la imagen anterior como primera URL, añade la lista de imágenes, el cubo relacional virtual y campos de sesión/página en eventos. Se puede volver a ejecutar; no cambia stock ni ventas.
+5. No vuelvas a cargar el catálogo opcional ni el historial demo sobre una instalación real.
 
-La lectura del catálogo y las ventas siguen siendo compatibles con la base anterior. El formulario de guardar producto necesita la nueva función; si falta, la app indica que ejecutes `03_catalogo_visual.sql`.
+La lectura del catálogo y las ventas sigue siendo compatible con la base anterior. El nuevo formulario de guardar producto necesita el SQL `04`; si falta, la app lo indica. Los eventos nuevos y el cubo SQL también requieren esa actualización.
 
 ## 3. Revisar la aplicación en Streamlit
 
@@ -60,9 +71,19 @@ La configuración actual de Firebase Authentication y los Secrets de Supabase se
 
 ## 4. Colocar fotos y textos propios
 
-Como administrador entra a **Inventario → Catálogo**, selecciona un producto y completa Descripción, Marca, Presentación y URL HTTPS de la foto. Guarda el producto y abre su ficha en la tienda.
+Como administrador entra a **Inventario → Catálogo**, selecciona un producto y completa Descripción, Marca y Presentación. Escribe la primera URL y pulsa **Agregar otra URL de imagen referencial** para añadir otra casilla. Los campos ya escritos se conservan al añadir casillas. Puedes guardar hasta ocho URL; deja vacía una para omitirla o utiliza **Quitar última URL**. Al terminar pulsa **Guardar producto**.
+
+En la tienda, pasa el cursor por la tarjeta: las imágenes alternan cada 1,6 segundos mientras permanece encima. En la ficha elige **Foto 1**, **Foto 2**, etc.; esta selección también funciona en celular. La primera URL es la portada. Los enlaces repetidos se guardan una sola vez.
 
 Las imágenes incluidas son ilustraciones originales de ejemplo, no fotografías de marcas comerciales. Una URL HTTPS de imagen sustituye la ilustración del artículo; debe ser accesible para el navegador del usuario. Un producto nuevo sin foto utiliza una ilustración genérica. La información visual nunca modifica las existencias: las entradas, ajustes y ventas siguen siendo sus operaciones propias.
+
+Solo se guarda el texto de las URL en Supabase, sin subir archivos al Storage. Las imágenes las sirve su alojamiento externo; su carga depende de que el enlace siga accesible.
+
+## 5. Recorrer el nuevo BI
+
+Abre **BI** y cambia de página con el menú interno o **Anterior/Siguiente**. Solo se renderiza la página elegida. Resumen, Ventas, Diagnóstico y OLAP comparten filtros; Predicciones tiene su período propio para no cortar por accidente el historial de entrenamiento. El almacén, la calidad y el uso indican qué datos globales consultan.
+
+Los gráficos, tablas, filtros y ejemplos de operaciones se describen en [docs/06_BI_Y_GALERIA.md](docs/06_BI_Y_GALERIA.md). Las métricas del período usan ventas completadas; las existencias son actuales. El sistema no reconstruye stock histórico ni inventa horas de ventas importadas.
 
 ## Funciones conservadas
 

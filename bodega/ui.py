@@ -1,9 +1,9 @@
 """Presentación visual del sistema. No modifica reglas de datos ni autenticación."""
 from pathlib import Path
 from base64 import b64encode
-from urllib.parse import urlsplit
 import html
 import streamlit as st
+from bodega.media import valid_image_url, product_urls
 
 ROOT = Path(__file__).resolve().parents[1]
 META_FIELDS = ["descripcion", "marca", "presentacion", "imagen_url"]
@@ -19,9 +19,9 @@ def svg_uri(path):
 
 
 def image_source(product):
-    url = str(product.get("imagen_url", "") or "").strip()
-    if url and valid_image_url(url):
-        return url
+    urls = product_urls(product)
+    if urls:
+        return urls[0]
     code = str(product.get("codigo", ""))
     file = ROOT / "assets" / "productos" / (code + ".svg") if code.isdigit() else None
     if file is None or not file.is_file():
@@ -29,21 +29,18 @@ def image_source(product):
     return svg_uri(file)
 
 
-def valid_image_url(url):
-    if not url:
-        return True
-    try:
-        parsed = urlsplit(url)
-        return parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username and not parsed.password
-    except ValueError:
-        return False
-
-
-def product_image(product, css_class="product-image"):
-    source = image_source(product)
-    if not source:
-        source = svg_uri(ROOT / "assets" / "productos" / "producto.svg")
-    st.markdown(f'<div class="{css_class}"><img src="{html.escape(source, quote=True)}" alt="{html.escape(str(product.get("nombre", "Producto")), quote=True)}" loading="lazy"></div>', unsafe_allow_html=True)
+def product_image(product, css_class="product-image", selected_index=0):
+    sources = product_urls(product) or [image_source(product)]
+    index = int(selected_index) % len(sources)
+    sources = sources[index:] + sources[:index]
+    alt = html.escape(str(product.get("nombre", "Producto")), quote=True)
+    first = f'<img class="gallery-base" src="{html.escape(sources[0], quote=True)}" alt="{alt}" loading="lazy">'
+    frames = ""
+    if len(sources) > 1:
+        frames = ''.join(f'<img class="gallery-frame" src="{html.escape(src, quote=True)}" alt="" aria-hidden="true" '
+            f'style="animation-delay:{i * 1.6}s" loading="lazy">' for i, src in enumerate(sources))
+        frames += f'<span class="gallery-count">{len(sources)} fotos</span>'
+    st.markdown(f'<div class="{css_class} product-gallery gallery-n{len(sources)}" style="--gallery-duration:{len(sources)*1.6}s">{first}{frames}</div>', unsafe_allow_html=True)
 
 
 def page_header(title, text):

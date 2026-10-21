@@ -15,6 +15,8 @@ from bodega.imports import validate_csv, COLUMNS
 from bodega.analytics import prepare_sales, enrich_products, kpis, replenish, daily_series, forecast, csv_export
 from bodega import storefront
 from bodega.ui import inject_css, page_header, footer, valid_image_url
+from bodega.media import product_urls, normalize_urls, MAX_IMAGES
+from bodega.telemetry import record
 
 st.set_page_config(page_title="Bodega Marga · Tienda interna y BI", page_icon="🛒", layout="wide", initial_sidebar_state="collapsed")
 inject_css()
@@ -41,7 +43,7 @@ def chart(fig):
 def notify(repo,event,detail=""):
     # Telemetría de uso sin emails, nombres de clientes ni credenciales.
     try:
-        repo.event(event,detail)
+        record(repo,event,detail)
     except (DataError,AccessError):
         st.caption("La operación se confirmó; no se pudo registrar su evento de uso.")
 
@@ -63,59 +65,9 @@ def home_page(products, sales, role):
     storefront.home_page(products, sales, role, chart, TODAY)
 
 
-def overview(products,sales):
-    hero("Tus datos, tus próximas decisiones", "Ventas, existencias y reposición en una sola vista. Elige el período que quieres revisar.")
-    if sales.empty:
-        st.info("Aún no hay ventas. Registra una venta o importa tu historial para empezar.")
-    cutoff = sales.fecha.max().date() if not sales.empty else TODAY
-    a,b,c=st.columns([2,2,1])
-    dates=a.date_input("Período",value=(cutoff-timedelta(days=27),cutoff),key="bi_dates")
-    categories=sorted(products.categoria.unique()) if not products.empty else []
-    selected=b.multiselect("Categorías",categories,default=categories)
-    source=c.selectbox("Origen",["Todos","POS","HISTORICO"])
-    filtered=sales.copy()
-    if len(dates)!=2:
-        st.info("Selecciona una fecha inicial y final."); return
-    filtered=filtered.loc[(filtered.fecha>=pd.Timestamp(dates[0])) & (filtered.fecha<=pd.Timestamp(dates[1])) & filtered.categoria.isin(selected)]
-    if source!="Todos": filtered=filtered.loc[filtered.origen==source]
-    values=kpis(filtered)
-    m=st.columns(4)
-    m[0].metric("Ventas netas",soles(values["ventas"]))
-    m[1].metric("Tickets",values["tickets"])
-    m[2].metric("Ticket promedio",soles(values["ticket_promedio"]))
-    m[3].metric("Margen bruto estimado",soles(values["margen"]))
-    st.caption("Ventas netas = precio × unidades − descuento. Margen bruto = ventas − costo registrado; no equivale a utilidad neta. Ticket promedio por ticket único, dentro del filtro.")
-    left,right=st.columns([1.5,1])
-    with left:
-        st.subheader("Cómo van tus ventas")
-        if not filtered.empty:
-            daily=filtered.groupby("fecha",as_index=False).ingreso.sum()
-            chart(px.area(daily,x="fecha",y="ingreso",color_discrete_sequence=["#127c64"],labels={"ingreso":"Ventas S/","fecha":"Día"}))
-        else: st.info("Sin ventas para estos filtros.")
-    with right:
-        st.subheader("Productos que más aportan")
-        if not filtered.empty:
-            top=filtered.groupby("nombre",as_index=False).ingreso.sum().nlargest(7,"ingreso").sort_values("ingreso")
-            chart(px.bar(top,y="nombre",x="ingreso",orientation="h",color_discrete_sequence=["#e1a14a"],labels={"ingreso":"Ventas S/","nombre":""}))
-    l,r=st.columns(2)
-    with l:
-        st.subheader("Ventas por categoría")
-        if not filtered.empty:
-            grouped=filtered.groupby("categoria",as_index=False).ingreso.sum()
-            chart(px.pie(grouped,names="categoria",values="ingreso",hole=.55,color_discrete_sequence=["#127c64","#e1a14a","#73aa97","#9fbdc2","#527466"]))
-    with r:
-        st.subheader("Qué requiere atención ahora")
-        if not products.empty:
-            active=products.loc[products.activo]
-            low=active.loc[active.stock<=active.stock_minimo]
-            st.metric("Artículos con stock bajo o agotado",len(low))
-            st.dataframe(low[["codigo","nombre","stock","stock_minimo"]],hide_index=True,width="stretch")
-        st.caption("Stock actual: no cambia al seleccionar otro período en el tablero.")
-    if not filtered.empty:
-        st.subheader("Detalle del período")
-        table=filtered[["fecha","venta_id","nombre","categoria","cantidad","ingreso","margen_bruto","medio_pago","origen"]]
-        st.dataframe(table,hide_index=True,width="stretch")
-        export_button(table,"ventas_bodega_marga.csv")
+def overview(repo,products,sales,role):
+    from bodega.bi_pages import dashboard
+    dashboard(repo,products,sales,role,TODAY,forecast_page)
 
 
 def sale_page(repo, products, role, sales):
@@ -140,7 +92,10 @@ def inventory_page(repo,products,role):
         labels={} if products.empty else dict(zip(products.id,products.nombre))
         pid=st.selectbox("Artículo",options,format_func=lambda v:"Crear producto" if v is None else labels[v])
         p={} if pid is None else products.loc[products.id==pid].iloc[0].to_dict()
-        with st.form("catalog_form"):
+        saved_urls=product_urls(p)
+        count_key=f"gallery_count_{pid}"
+        image_count=st.session_state.setdefault(count_key,max(1,len(saved_urls)))
+        with st.form("catalog_form",enter_to_submit=False):
             a,b=st.columns(2)
             code=a.text_input("Código / código de barras",value=p.get("codigo",""),max_chars=60)
             name=b.text_input("Nombre",value=p.get("nombre",""),max_chars=120)
@@ -154,17 +109,27 @@ def inventory_page(repo,products,role):
             description=st.text_area("Descripción",value=p.get("descripcion", ""),max_chars=1500,height=100)
             brand=a.text_input("Marca",value=p.get("marca", ""),max_chars=80)
             presentation=b.text_input("Presentación",value=p.get("presentacion", ""),max_chars=120,placeholder="Ej. bolsa de 1 kg")
-            image_url=st.text_input("URL HTTPS de la foto",value=p.get("imagen_url", ""),max_chars=2048,placeholder="https://...")
+            st.markdown("**Imágenes referenciales por URL**")
+            image_values=[st.text_input(f"URL HTTPS de imagen {i+1}",
+                value=saved_urls[i] if i<len(saved_urls) else "",max_chars=2048,
+                placeholder="https://...",key=f"gallery_url_{pid}_{i}") for i in range(image_count)]
+            add_image=st.form_submit_button("Agregar otra URL de imagen referencial",disabled=image_count>=MAX_IMAGES)
+            remove_image=st.form_submit_button("Quitar última URL",disabled=image_count<=1)
+            st.caption("Hasta 8 URL. La primera es la portada; las demás cambian al pasar el cursor. Deja vacía una casilla para omitirla.")
             enabled=st.checkbox("Producto activo",value=bool(p.get("activo",True)))
             submit=st.form_submit_button("Guardar producto",type="primary")
+        if add_image or remove_image:
+            st.session_state[count_key]=image_count+(1 if add_image else -1)
+            st.rerun()
         if submit:
+            images=normalize_urls(image_values)
             if not all(x.strip() for x in [code,name,category,supplier]): st.error("Completa los campos de texto.")
-            elif not valid_image_url(image_url.strip()): st.error("La foto debe usar una dirección HTTPS válida.")
             else:
                 repo.save_product({"id":int(pid) if pid is not None else None,"codigo":code.strip(),"nombre":name.strip(),
                     "categoria":category.strip(),"proveedor":supplier.strip(),"precio":round(price,2),"costo":round(cost,2),
                     "stock_minimo":minimum,"plazo_dias":lead,"activo":enabled,
-                    "descripcion":description.strip(),"marca":brand.strip(),"presentacion":presentation.strip(),"imagen_url":image_url.strip()})
+                    "descripcion":description.strip(),"marca":brand.strip(),"presentacion":presentation.strip(),
+                    "imagen_url":images[0] if images else "","imagenes_urls":images})
                 notify(repo,"producto_guardado"); finish("Producto guardado. Registra una entrada para cargar existencias.")
         st.caption("El catálogo nunca modifica stock. Las ventas conservan el precio y costo que tenían al registrarse.")
     with movement:
@@ -264,51 +229,9 @@ def replenish_page(repo,products,sales,role):
     st.dataframe(table.loc[table.ventas_28d==0,["nombre","stock","costo"]],hide_index=True,width="stretch")
 
 
-def forecast_page(repo,products,sales,role):
-    hero("Pronóstico que se puede comprobar", "Comparamos dos referencias sencillas con Random Forest usando 28 días posteriores al entrenamiento.")
-    if products.empty or sales.empty: st.info("Primero carga productos e historial."); return
-    ids=products.id.tolist(); labels=dict(zip(products.id,products.nombre))
-    pid=st.selectbox("Producto",ids,format_func=labels.get,key="forecast_product")
-    a,b,c=st.columns(3)
-    start=a.date_input("Inicio del registro completo",value=sales.fecha.min().date(),key="forecast_start")
-    end=b.date_input("Fecha de corte",value=sales.fecha.max().date(),max_value=TODAY,key="forecast_end")
-    horizon=c.selectbox("Días a pronosticar",[7,14,28])
-    complete=st.checkbox("Confirmo que cada día del período tiene registro completo; un día sin líneas significa cero ventas.")
-    stockout=st.checkbox("Hubo faltantes o días con ventas sin registrar")
-    if stockout: st.warning("El pronóstico no se habilita hasta corregir o delimitar un período completo. Las ventas no equivalen a demanda no atendida.")
-    if not complete or stockout:
-        st.info("Confirma la cobertura del registro para evaluar el pronóstico."); return
-    series=daily_series(sales,int(pid),start,end)
-    signature=(int(pid),str(start),str(end),horizon,tuple(series))
-    if st.button("Evaluar y pronosticar",type="primary"):
-        with st.spinner("Comparando métodos con datos pasados…"):
-            result=forecast(series,horizon)
-        st.session_state["forecast_result"]=(signature,result)
-        notify(repo,"pronostico_evaluado")
-    stored=st.session_state.get("forecast_result")
-    if not stored or stored[0]!=signature: return
-    result=stored[1]
-    a,b,c=st.columns(3)
-    a.metric("Método elegido",result["metodo"])
-    b.metric("WAPE · validación 28 días",f'{100*result["wape"]:.1f}%')
-    c.metric("Índice 100 × (1 − WAPE)",f'{result["exactitud"]:.1f}%')
-    scores=pd.DataFrame([{"Método":m,"WAPE %":round(100*v,2)} for m,v in result["scores"].items()])
-    st.dataframe(scores,hide_index=True,width="stretch")
-    st.caption("Menor WAPE es mejor. El índice puede ser negativo y no se fuerza a 80 %. El mismo bloque se usa para seleccionar el método: es validación preliminar, no una prueba final independiente.")
-    l,r=st.columns(2)
-    with l:
-        st.subheader("Comparación sobre semanas reservadas")
-        chart(px.line(result["comparison"],x="fecha",y=["observado","baseline","Random Forest"],labels={"value":"Unidades","fecha":"Día"}))
-    with r:
-        st.subheader("Próximos días")
-        chart(px.bar(result["table"],x="fecha",y="unidades",color_discrete_sequence=["#127c64"]))
-        st.dataframe(result["table"],hide_index=True,width="stretch")
-    export_button(result["table"],"pronostico_unidades.csv")
-    if role in {"administrador","analista"} and st.button("Guardar evaluación y pronóstico"):
-        records=[{"producto_id":int(pid),"fecha":r.fecha.date().isoformat(),"corte":str(end),
-            "unidades":round(float(r.unidades),3),"metodo":result["metodo"],
-            "wape_validacion":result["wape"],"wape_baseline":result["wape_baseline"]} for r in result["table"].itertuples()]
-        repo.save_forecast(records); st.success("Pronóstico guardado.")
+def forecast_page(repo,products,sales,role,embedded=False):
+    from bodega.prediction_page import render
+    render(repo,products,sales,role,TODAY,notify,embedded)
 
 
 def import_page(repo,products,role):
@@ -393,9 +316,14 @@ def main():
     products=enrich_products(repo.table("bodega_productos"),repo.table("bodega_categorias"),repo.table("bodega_proveedores"))
     sales=prepare_sales(repo.table("bodega_v_ventas"))
     page=storefront.topbar(products,role,app_mode,logout)
+    screen=f"{page}/{st.session_state.get('shop_view','catalogo')}" if page=="Registrar venta" else page
+    if st.session_state.get("measured_screen")!=screen:
+        event=("caja_abierta" if st.session_state.get("shop_view")=="carrito" else "catalogo_abierto") if page=="Registrar venta" else "pagina_visitada"
+        record(repo,event,page=screen)
+        st.session_state["measured_screen"]=screen
     if "flash" in st.session_state: st.success(st.session_state.pop("flash"))
     if page=="Inicio":home_page(products,sales,role)
-    elif page=="Resumen BI": overview(products,sales)
+    elif page=="Resumen BI": overview(repo,products,sales,role)
     elif page=="Registrar venta": sale_page(repo,products,role,sales)
     elif page=="Inventario": inventory_page(repo,products,role)
     elif page=="Reposición": replenish_page(repo,products,sales,role)

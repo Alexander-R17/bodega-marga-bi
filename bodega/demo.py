@@ -41,6 +41,12 @@ class DemoRepository:
             "medio_pago":payment,"origen":origin})
 
     def table(self,name):
+        if name == "bodega_tiempo":
+            from bodega.bi import facts
+            return facts(pd.DataFrame(self.sales))[["fecha", "anio", "mes", "dia_semana_num"]].drop_duplicates().rename(columns={"dia_semana_num":"dia_semana"}).assign(dia=lambda x:x.fecha.dt.day)
+        if name == "bodega_v_cubo_ventas":
+            from bodega.bi import facts, cube
+            return cube(facts(self.table("bodega_v_ventas")), ["periodo_mes", "categoria", "medio_pago"])
         mapping={"bodega_productos":self.products,"bodega_categorias":self.categories,"bodega_proveedores":self.suppliers,
             "bodega_v_ventas":[s for s in self.sales if self.headers[s["venta_id"]-1]["estado"]=="COMPLETADA"],
             "bodega_ventas":self.headers,"bodega_movimientos":self.movements,"bodega_lotes":self.batches,
@@ -63,13 +69,14 @@ class DemoRepository:
             p=next(p for p in self.products if p["id"]==x["producto_id"])
             if not p["activo"] or x["cantidad"]<=0 or not 0<=x["descuento"]<=x["cantidad"]*p["precio"]: raise DataError("Cantidad inválida")
             if p["stock"]<x["cantidad"]: raise DataError("Stock insuficiente")
-        vid=len(self.headers)+1; date=datetime.now(ZoneInfo("America/Lima")).date().isoformat(); total=0
+        vid=len(self.headers)+1; now=datetime.now(ZoneInfo("America/Lima"));date=now.date().isoformat(); total=0
         for x in items:
             p=next(p for p in self.products if p["id"]==x["producto_id"])
             self._line(vid,p,date,x["cantidad"],p["precio"],p["costo"],x["descuento"],payment,"POS")
+            self.sales[-1]["fecha_hora"]=now.isoformat()
             p["stock"]-=x["cantidad"]; total+=self.sales[-1]["ingreso"]
             self.movements.append({"id":len(self.movements)+1,"producto_id":p["id"],"tipo":"VENTA", "variacion":-x["cantidad"],"stock_resultante":p["stock"]})
-        self.headers.append({"id":vid,"fecha":date,"medio_pago":payment,"origen":"POS","estado":"COMPLETADA","total":round(total,2)})
+        self.headers.append({"id":vid,"fecha":date,"fecha_hora":now.isoformat(),"medio_pago":payment,"origen":"POS","estado":"COMPLETADA","total":round(total,2)})
         result={"venta_id":vid,"total":round(total,2)}; self.operations[op]=(payload,result)
         return result
 
@@ -141,8 +148,10 @@ class DemoRepository:
             else: self.predictions.append({"id":len(self.predictions)+1,**r})
         return {"filas":len(records)}
 
-    def event(self,event,detail=""):
-        self.events.append({"id":len(self.events)+1,"evento":event,"detalle":detail})
+    def event(self,event,detail="",session_id=None,page=""):
+        self.events.append({"id":len(self.events)+1,"evento":event,"detalle":detail,
+            "fecha_hora":datetime.now(ZoneInfo("America/Lima")).isoformat(),"usuario_uid":"demo",
+            "sesion_id":session_id,"pagina":page})
 
     def decision(self,op,product_id,units,decision,reason,context):
         payload=(product_id,units,decision,reason,context); result=self._operation(op,payload)

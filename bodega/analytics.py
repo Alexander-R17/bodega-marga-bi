@@ -29,6 +29,8 @@ def enrich_products(products, categories, suppliers):
             df[field] = ""
         else:
             df[field] = df[field].fillna("").astype(str)
+    if "imagenes_urls" not in df:
+        df["imagenes_urls"] = [[] for _ in range(len(df))]
     return df
 
 

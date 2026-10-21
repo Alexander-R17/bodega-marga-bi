@@ -88,3 +88,39 @@ div[data-testid="stDataFrame"]{border:1px solid var(--line);border-radius:0}
  [class*="st-key-cart_qty_"] [data-testid="stColumn"]{min-width:0!important;flex:1 1 0!important}
  .app-footer{flex-direction:column;align-items:flex-start;gap:8px}.product-image{height:145px}
 }
+
+/* Galería externa: el navegador carga las imágenes directamente de sus URL. */
+.product-gallery{position:relative;isolation:isolate}
+.product-gallery .gallery-frame{position:absolute;inset:0;width:100%;height:100%;max-width:100%;max-height:100%;margin:auto;opacity:0;object-fit:contain;pointer-events:none}
+.product-gallery .gallery-count{position:absolute;bottom:5px;right:5px;font-size:9px;color:#426251;background:#eef5eeed;padding:3px 6px;border:1px solid #dde8dd}
+[class*=st-key-product_card_]:hover .product-gallery .gallery-frame,.product-gallery:hover .gallery-frame,[class*=st-key-product_card_]:focus-within .gallery-frame{animation-duration:var(--gallery-duration);animation-iteration-count:infinite;animation-timing-function:step-end}
+[class*=st-key-product_card_]:hover .product-gallery:has(.gallery-frame) .gallery-base,.product-gallery:hover:has(.gallery-frame) .gallery-base{opacity:0}
+@media(prefers-reduced-motion:reduce){.product-gallery .gallery-frame{animation:none!important}[class*=st-key-product_card_]:hover .gallery-base,.product-gallery:hover .gallery-base{opacity:1!important}}
+@keyframes gallery2{0%,49.900%{opacity:1}50.000%,100%{opacity:0}}
+[class*=st-key-product_card_]:hover .gallery-n2 .gallery-frame,.gallery-n2:hover .gallery-frame,[class*=st-key-product_card_]:focus-within .gallery-n2 .gallery-frame{animation-name:gallery2}
+@keyframes gallery3{0%,33.233%{opacity:1}33.333%,100%{opacity:0}}
+[class*=st-key-product_card_]:hover .gallery-n3 .gallery-frame,.gallery-n3:hover .gallery-frame,[class*=st-key-product_card_]:focus-within .gallery-n3 .gallery-frame{animation-name:gallery3}
+@keyframes gallery4{0%,24.900%{opacity:1}25.000%,100%{opacity:0}}
+[class*=st-key-product_card_]:hover .gallery-n4 .gallery-frame,.gallery-n4:hover .gallery-frame,[class*=st-key-product_card_]:focus-within .gallery-n4 .gallery-frame{animation-name:gallery4}
+@keyframes gallery5{0%,19.900%{opacity:1}20.000%,100%{opacity:0}}
+[class*=st-key-product_card_]:hover .gallery-n5 .gallery-frame,.gallery-n5:hover .gallery-frame,[class*=st-key-product_card_]:focus-within .gallery-n5 .gallery-frame{animation-name:gallery5}
+@keyframes gallery6{0%,16.567%{opacity:1}16.667%,100%{opacity:0}}
+[class*=st-key-product_card_]:hover .gallery-n6 .gallery-frame,.gallery-n6:hover .gallery-frame,[class*=st-key-product_card_]:focus-within .gallery-n6 .gallery-frame{animation-name:gallery6}
+@keyframes gallery7{0%,14.186%{opacity:1}14.286%,100%{opacity:0}}
+[class*=st-key-product_card_]:hover .gallery-n7 .gallery-frame,.gallery-n7:hover .gallery-frame,[class*=st-key-product_card_]:focus-within .gallery-n7 .gallery-frame{animation-name:gallery7}
+@keyframes gallery8{0%,12.400%{opacity:1}12.500%,100%{opacity:0}}
+[class*=st-key-product_card_]:hover .gallery-n8 .gallery-frame,.gallery-n8:hover .gallery-frame,[class*=st-key-product_card_]:focus-within .gallery-n8 .gallery-frame{animation-name:gallery8}
+
+/* Espacio BI: una página activa, filtros a la izquierda y gráficos en pares. */
+.bi-banner{padding:26px 30px;background:#f9e3da;margin:8px 0 16px}.bi-banner h1{font-size:33px;font-weight:650;letter-spacing:-1.2px;line-height:1.2;margin:0 0 12px;padding:0}.bi-banner p{font-size:13px;color:#627267;margin:0}
+.st-key-bi_navigation{padding:4px 0 14px;border-bottom:1px solid #e0e6e0}
+.st-key-bi_navigation [role=radiogroup]{gap:3px;justify-content:space-between;flex-wrap:wrap}
+.st-key-bi_navigation [data-testid=stRadioOption]{border-bottom:2px solid transparent;padding:7px 12px;cursor:pointer}
+.st-key-bi_navigation [data-testid=stRadioOption]>div>div:first-child{display:none}.st-key-bi_navigation [data-testid=stRadioOption]>div{gap:0}
+.st-key-bi_navigation [data-testid=stRadioOption]:has(input:checked){background:#f2f6f1;border-bottom-color:#2e775f}
+.st-key-bi_navigation [data-testid=stRadioOption] p{font-size:12px}
+.st-key-bi_navigation [data-testid=stRadioOption]:focus-within{outline:2px solid #2e775f;outline-offset:2px}
+.st-key-bi_filter_panel{background:#faf8f5;padding:15px 13px;border-top:3px solid #b4ccbd}.st-key-bi_filter_panel [data-testid=stWidgetLabel] p{font-size:11px}.st-key-bi_filter_panel [data-testid=stCaptionContainer] p{font-size:10px}
+.bi-section{margin:18px 0 8px}.bi-section h3{font-size:17px!important;margin:0 0 6px;padding:0;line-height:1.35}.bi-section p{font-size:12px;line-height:1.6;color:#738076;margin:0}
+.bi-answer{background:#faf8f5;border-top:2px solid #b4ccbd;padding:16px 14px;min-height:195px;margin:10px 0}.bi-answer>span{font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:#77907e}.bi-answer h4{font-size:12px;line-height:1.5;margin:12px 0;font-weight:500}.bi-answer strong{display:block;font-size:18px;line-height:1.35;overflow-wrap:anywhere}.bi-answer p{font-size:11px;line-height:1.6;color:#738076;margin:12px 0 0}
+@media(max-width:680px){.bi-banner{padding:20px}.bi-banner h1{font-size:27px}.st-key-bi_navigation [data-testid=stRadioOption]{padding:5px}.st-key-bi_navigation [data-testid=stRadioOption] p{font-size:10px}.bi-answer{min-height:0}.st-key-bi_filter_panel{padding:13px}.bi-section h3{font-size:17px!important}}

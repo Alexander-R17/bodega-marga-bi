@@ -76,6 +76,8 @@ def test_forecast_evaluate_and_persist_through_ui(app):
     assert not app.exception and not app.error
     next(b for b in app.button if b.label=="Guardar evaluación y pronóstico").click().run()
     assert len(app.session_state["demo_repo"].predictions)==7
+    app.radio(key="forecast_view").set_value("Pronósticos guardados").run()
+    assert not app.exception and not app.error
 
 
 def test_cloud_never_falls_back_to_demo(monkeypatch):
@@ -93,3 +95,63 @@ def test_home_quick_action_and_replenishment_decision(app):
     next(b for b in app.button if b.label=="Guardar decisión").click().run()
     assert not app.exception and not app.error
     assert len(app.session_state["demo_repo"].decisions)==1
+
+
+def test_all_bi_pages_olap_operations_and_dw_tables(app):
+    from bodega.bi_pages import PAGES
+    app.radio(key="page").set_value("Resumen BI").run()
+    for page in PAGES:
+        app.radio(key="bi_page").set_value(page).run()
+        assert not app.exception and not app.error
+    app.radio(key="bi_page").set_value("Cubo OLAP").run()
+    for op in ["Slice","Dice","Drill-down","Roll-up","Cubo y subtotales","Pivot"]:
+        app.radio(key="olap_operation").set_value(op).run()
+        assert not app.exception and not app.error
+    app.radio(key="olap_operation").set_value("Drill-down").run()
+    next(r for r in app.radio if r.label=="Jerarquía").set_value("Año → trimestre → mes → día").run()
+    next(r for r in app.select_slider if r.label=="Nivel de detalle").set_value("Día").run()
+    assert not app.exception and not app.error
+    app.radio(key="bi_page").set_value("Datos y uso").run()
+    for option in app.selectbox(key="bi_dw_table").options:
+        app.selectbox(key="bi_dw_table").select(option).run()
+        assert not app.exception and not app.error
+    for area in ["Calidad e importaciones","Uso del sistema"]:
+        app.radio(key="bi_data_area").set_value(area).run()
+        assert not app.exception and not app.error
+
+
+def test_gallery_add_another_url_keeps_unsaved_fields_and_saves(app):
+    app.radio(key="page").set_value("Inventario").run()
+    article=next(x for x in app.selectbox if x.label=="Artículo")
+    article.set_value(1).run()
+    next(x for x in app.text_area if x.label=="Descripción").set_value("Descripción con dos imágenes")
+    app.text_input(key="gallery_url_1_0").set_value("https://example.com/first.png")
+    next(b for b in app.button if b.label=="Agregar otra URL de imagen referencial").click().run()
+    assert app.text_input(key="gallery_url_1_0").value=="https://example.com/first.png"
+    assert next(x for x in app.text_area if x.label=="Descripción").value=="Descripción con dos imágenes"
+    app.text_input(key="gallery_url_1_1").set_value("https://example.com/second.png")
+    next(b for b in app.button if b.label=="Guardar producto").click().run()
+    assert not app.exception and not app.error
+    p=app.session_state["demo_repo"].products[0]
+    assert p["imagenes_urls"]==["https://example.com/first.png","https://example.com/second.png"]
+    assert p["imagen_url"]==p["imagenes_urls"][0]
+
+
+def test_bi_empty_sales_is_explicit(app):
+    from bodega.bi_pages import PAGES
+    for h in app.session_state["demo_repo"].headers:h["estado"]="ANULADA"
+    app.radio(key="page").set_value("Resumen BI").run()
+    for page in PAGES:
+        app.radio(key="bi_page").set_value(page).run()
+        assert not app.exception and not app.error
+
+
+def test_bi_filters_survive_prediction_page_and_clear(app):
+    app.radio(key="page").set_value("Resumen BI").run()
+    app.multiselect(key="_bif_categories").set_value(["Lácteos"]).run()
+    app.radio(key="bi_page").set_value("Predicciones").run()
+    app.radio(key="bi_page").set_value("Ventas y rentabilidad").run()
+    assert app.multiselect(key="_bif_categories").value==["Lácteos"]
+    next(b for b in app.button if b.label=="Limpiar filtros").click().run()
+    assert app.multiselect(key="_bif_categories").value==[]
+    assert not app.exception and not app.error

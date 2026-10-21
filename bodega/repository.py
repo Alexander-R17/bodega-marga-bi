@@ -27,6 +27,8 @@ class CloudRepository:
         except requests.RequestException:
             raise DataError("No se recibió confirmación de Supabase. Reintenta la misma operación; conserva su identificador.", confirmed_rejected=False) from None
         if not r.ok:
+            if path == "rpc/bodega_guardar_producto_galeria" and r.status_code == 404:
+                raise DataError("Ejecuta database/04_galeria_y_bi.sql en Supabase para guardar varias imágenes.")
             if path == "rpc/bodega_guardar_producto_catalogo" and r.status_code == 404:
                 raise DataError("Ejecuta database/03_catalogo_visual.sql en Supabase para guardar las fotos y fichas del catálogo.")
             try:
@@ -43,12 +45,12 @@ class CloudRepository:
 
     def table(self, name):
         allowed = {"bodega_productos", "bodega_categorias", "bodega_proveedores", "bodega_v_ventas",
-                   "bodega_ventas", "bodega_movimientos", "bodega_lotes", "bodega_predicciones", "bodega_eventos", "bodega_reposiciones"}
+                   "bodega_ventas", "bodega_movimientos", "bodega_lotes", "bodega_predicciones", "bodega_eventos", "bodega_reposiciones", "bodega_tiempo", "bodega_v_cubo_ventas"}
         if name not in allowed:
             raise DataError("Tabla no permitida.")
         # Paginar; no asumir que Supabase devuelve más de 1000 filas por petición.
         rows, offset = [], 0
-        order = "id_detalle" if name == "bodega_v_ventas" else "id"
+        order = "id_detalle" if name == "bodega_v_ventas" else ("fecha" if name == "bodega_tiempo" else "id")
         while True:
             page = self._request("GET", name, params={"select": "*", "order": order,
                                                      "limit": 500, "offset": offset})
@@ -73,7 +75,7 @@ class CloudRepository:
 
     def save_product(self, product):
         require_role("administrador")
-        return self._request("POST", "rpc/bodega_guardar_producto_catalogo", json={"p_producto": product})
+        return self._request("POST", "rpc/bodega_guardar_producto_galeria", json={"p_producto": product})
 
     def create_batch(self, batch_id, name, sha, records):
         return self.rpc("bodega_crear_lote", {"p_id": batch_id, "p_nombre": name,
@@ -92,7 +94,7 @@ class CloudRepository:
         return self.rpc("bodega_decidir_reposicion", {"p_id":op,"p_producto":product_id,
             "p_unidades":units,"p_decision":decision,"p_motivo":reason,"p_contexto":context})
 
-    def event(self, event, detail=""):
+    def event(self, event, detail="", session_id=None, page=""):
         identity = require_identity()
         return self._request("POST", "bodega_eventos", json={"usuario_uid": identity["uid"],
-            "evento": event, "detalle": detail[:120]})
+            "evento": event, "detalle": detail[:120], "sesion_id": session_id, "pagina": page[:100]})
