@@ -30,7 +30,9 @@ Para una prueba aislada puedes ejecutar `database/02_catalogo_demo_OPCIONAL.sql`
 
 ## 3. Firebase Authentication
 
-Se reutiliza el proyecto que proporcionaste: `smart-campus-analitica-energ`. Su identificador puede conservar ese nombre aunque la página se presente como Bodega Marga.
+Se utiliza el proyecto independiente **Bodega Marga BI**, con identificador `bodega-marga-bi`, creado por el propietario para esta tienda. La aplicación web y las credenciales de servidor deben pertenecer a este mismo proyecto. La configuración pública de Hosting y la plantilla de Secrets ya apuntan al nuevo proyecto.
+
+Si vienes de la demostración, sigue primero [Activar el nuevo Firebase y el modo real](07_ACTIVAR_FIREBASE.md). Registrar la aplicación web no configura por sí solo Authentication ni conecta el servidor a Supabase.
 
 1. Abre Authentication → Sign-in method y habilita **Email/Password**.
 2. En Users crea las cuentas de propietario, cajero y analista. No se habilita registro público en esta aplicación.
@@ -61,7 +63,7 @@ APP_MODE = "cloud"
 SUPABASE_URL = "https://TU-PROYECTO.supabase.co"
 SUPABASE_SERVICE_ROLE_KEY = "CLAVE_PRIVADA_SOLO_EN_SECRETS"
 FIREBASE_API_KEY = "LA_API_KEY_WEB_DE_TU_PROYECTO"
-FIREBASE_PROJECT_ID = "smart-campus-analitica-energ"
+FIREBASE_PROJECT_ID = "bodega-marga-bi"
 ```
 
 Completa también las secciones `[user_roles]` y `[firebase_service_account]`. Las entradas de cada sección deben quedar debajo de su encabezado TOML; coloca las variables superiores antes de los encabezados.
@@ -74,14 +76,14 @@ La URL final tendrá el subdominio que asignes, por ejemplo `https://TU-NOMBRE.s
 
 Hosting solo sirve `hosting/`: no ejecuta Python ni PHP. El dashboard funciona en Streamlit y la página de Firebase conduce a él. No se integra dentro de un iframe ni se comparten contraseñas mediante URL.
 
-1. Edita `hosting/config.js`: en `dashboardUrl` pega la nueva URL HTTPS de Streamlit. La configuración Firebase web ya contiene los valores proporcionados.
+1. Comprueba `hosting/config.js`: `dashboardUrl` ya apunta a `https://bodega-marga-bi.streamlit.app/` y la configuración web corresponde al proyecto Firebase `bodega-marga-bi` proporcionado por el propietario.
 2. Abre Cloud Shell de Google, que es el terminal visible en tu captura. Clona el repositorio nuevo. Si es privado, utiliza el método de autenticación que te proporcione GitHub; no introduzcas tokens en comandos que luego publiques.
 3. Desde la carpeta del repositorio ejecuta:
 
 ```bash
 npm install -g firebase-tools
 firebase login --no-localhost
-firebase deploy --only hosting --project smart-campus-analitica-energ
+firebase deploy --only hosting --project bodega-marga-bi
 ```
 
 No necesitas ejecutar `firebase init`: esta entrega ya incluye `firebase.json` y `.firebaserc`. Firebase usa el contenido de `hosting/` y las reglas de esa configuración.
@@ -89,7 +91,7 @@ No necesitas ejecutar `firebase init`: esta entrega ya incluye `firebase.json` y
 **El último comando sustituye el Hosting actual de ese proyecto.** Si deseas conservarlo, crea otro sitio/proyecto Hosting o publica primero un canal de vista previa:
 
 ```bash
-firebase hosting:channel:deploy bodega-preview --project smart-campus-analitica-energ
+firebase hosting:channel:deploy bodega-preview --project bodega-marga-bi
 ```
 
 En una vista previa comprueba el enlace a Streamlit y luego decide cuándo publicar en el dominio principal. Estos comandos se entregan para que el propietario los ejecute; no se han ejecutado contra tu cuenta.

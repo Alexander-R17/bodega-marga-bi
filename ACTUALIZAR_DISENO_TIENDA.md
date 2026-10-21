@@ -67,7 +67,7 @@ La lectura del catálogo y las ventas sigue siendo compatible con la base anteri
 4. Prueba: **Tienda interna → Ver producto → Agregar al carrito → Carrito → Ver carrito y finalizar → elegir pago → Confirmar venta**.
 5. Revisa que disminuya el stock y que la venta aparezca en BI y Actividad. En demo, estos cambios solo duran durante esa sesión.
 
-La configuración actual de Firebase Authentication y los Secrets de Supabase se conserva. Esta actualización del dashboard no requiere volver a desplegar Firebase Hosting. Para activar operaciones persistentes, sigue la configuración `APP_MODE = "cloud"` de `docs/01_DESPLIEGUE_NUBE.md`.
+Para esta instalación se ha elegido el nuevo proyecto Firebase `bodega-marga-bi`. Actualiza los valores de Firebase y su cuenta de servicio en Secrets de Streamlit con ese mismo proyecto. Conserva los valores de Supabase de tu bodega. La guía [docs/07_ACTIVAR_FIREBASE.md](docs/07_ACTIVAR_FIREBASE.md) explica el paso de demo a modo real. Si publicas la portada, utiliza también la configuración nueva de `hosting/config.js` y el proyecto `bodega-marga-bi` al desplegar Hosting.
 
 ## 4. Colocar fotos y textos propios
 
