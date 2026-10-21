@@ -1,3 +1,0 @@
-pytest>=8,<10
-psycopg[binary]>=3.2,<4
-pglast>=7,<9
