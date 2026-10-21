@@ -17,6 +17,7 @@ from bodega import storefront
 from bodega.ui import inject_css, page_header, footer, valid_image_url
 from bodega.media import product_urls, normalize_urls, MAX_IMAGES
 from bodega.telemetry import record
+from bodega.staff import present_activity, team_editor
 
 st.set_page_config(page_title="Bodega Marga · Tienda interna y BI", page_icon="🛒", layout="wide", initial_sidebar_state="collapsed")
 inject_css()
@@ -169,7 +170,7 @@ def inventory_page(repo,products,role):
             if valid.empty: st.info("No hay ventas para anular.")
             else:
                 last=valid.tail(30)
-                st.dataframe(last,hide_index=True,width="stretch")
+                st.dataframe(present_activity(last),hide_index=True,width="stretch")
                 with st.form("annul_form"):
                     vid=st.selectbox("Venta a anular",last.id.tolist())
                     reason=st.text_input("Motivo de anulación",max_chars=200)
@@ -259,7 +260,7 @@ def import_page(repo,products,role):
     batches=repo.table("bodega_lotes")
     if not batches.empty:
         st.subheader("Lotes y estado")
-        st.dataframe(batches,hide_index=True,width="stretch")
+        st.dataframe(present_activity(batches),hide_index=True,width="stretch")
         pending=batches.loc[batches.estado=="VALIDADO"]
         if not pending.empty:
             labels=dict(zip(pending.id,pending.nombre))
@@ -271,14 +272,17 @@ def import_page(repo,products,role):
 
 def activity_page(repo,role):
     hero("Actividad y trazabilidad", "Consulta movimientos, importaciones y pronósticos guardados.")
-    names={"Movimientos":"bodega_movimientos","Lotes":"bodega_lotes","Pronósticos":"bodega_predicciones","Decisiones de reposición":"bodega_reposiciones"}
+    if role=="administrador": team_editor()
+    names={"Movimientos":"bodega_movimientos","Ventas y pagos":"bodega_ventas","Lotes":"bodega_lotes","Pronósticos":"bodega_predicciones","Decisiones de reposición":"bodega_reposiciones"}
     if role=="administrador": names["Eventos de uso"]="bodega_eventos"
     selected=st.selectbox("Datos",list(names))
     data=repo.table(names[selected])
     if data.empty: st.info("Aún no hay registros.")
     else:
+        data=present_activity(data)
         st.dataframe(data,hide_index=True,width="stretch")
         export_button(data,selected.lower().replace(" ","_")+".csv")
+        st.caption("Los nombres y roles reflejan el directorio actual. Si aparece «Usuario sin nombre», asígnalo en Equipo y nombres. La auditoría conserva el identificador original.")
     with st.expander("Cómo se calculan los indicadores"):
         st.write("Ventas netas: suma de importes de líneas de ventas completadas. Ticket promedio: ventas / tickets únicos. Velocidad: unidades realizadas / días calendario. Stock: entradas y ajustes menos ventas y mermas, más anulaciones POS. Las devoluciones parciales, cuentas por cobrar e impuestos están fuera del MVP.")
 
@@ -337,6 +341,8 @@ try:
     main()
 except (DataError,AccessError,ValueError) as exc:
     if isinstance(exc,DataError) and exc.confirmed_rejected:
+        if "pending_sale" in st.session_state:
+            st.session_state["reset_payment_confirmation"]=True
         for key in ["pending_sale","pending_movement","pending_annul","pending_decision"]:
             st.session_state.pop(key,None)
     st.error(str(exc))

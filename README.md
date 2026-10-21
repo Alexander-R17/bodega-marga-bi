@@ -26,7 +26,8 @@ Lee **[docs/01_DESPLIEGUE_NUBE.md](docs/01_DESPLIEGUE_NUBE.md)**. Todo puede hac
 1. Crea un repositorio nuevo, por ejemplo `bodega-marga-bi`, y sube el contenido de esta carpeta a su raíz.
 2. Ejecuta **`database/01_bodega_schema.sql`** en Supabase.
    Después ejecuta **`database/03_catalogo_visual.sql`** para guardar descripción, marca, presentación y foto del producto.
-   Finalmente ejecuta **`database/04_galeria_y_bi.sql`** para la galería, el cubo SQL y los eventos por sesión.
+   Luego ejecuta **`database/04_galeria_y_bi.sql`** para la galería, el cubo SQL y los eventos por sesión.
+   Finalmente ejecuta **`database/05_confirmacion_pago.sql`** para la confirmación manual del pago en caja.
 3. Habilita Email/Password en Firebase Authentication y crea las cuentas del personal.
 4. Despliega `app.py` en Streamlit Community Cloud con Python 3.12.
 5. Completa Settings → Secrets usando `.streamlit/secrets.toml.example`; utiliza `APP_MODE = "cloud"`.
@@ -34,6 +35,8 @@ Lee **[docs/01_DESPLIEGUE_NUBE.md](docs/01_DESPLIEGUE_NUBE.md)**. Todo puede hac
 7. Crea el catálogo, registra el conteo inicial y haz una venta de prueba.
 
 **Si tu proyecto ya está funcionando con la ficha visual**, sigue [ACTUALIZAR_DISENO_TIENDA.md](ACTUALIZAR_DISENO_TIENDA.md). Añade `04_galeria_y_bi.sql` y sube el código al mismo repositorio. No vuelvas a cargar los datos demo sobre el negocio real.
+
+**Nombres del equipo, cobro y vista limpia:** sigue [docs/08_NOMBRES_PAGO_INTERFAZ.md](docs/08_NOMBRES_PAGO_INTERFAZ.md). Si ya aplicaste las migraciones anteriores, ejecuta solamente `05_confirmacion_pago.sql` y actualiza los archivos de esta entrega.
 
 ## Demostración
 

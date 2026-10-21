@@ -1,5 +1,5 @@
 // Aplicación publicada de Bodega Marga. No pegar tokens ni claves privadas.
-export const dashboardUrl = "https://bodega-marga-bi.streamlit.app/";
+export const dashboardUrl = "https://bodega-marga-bi.streamlit.app/?embed=true";
 // Configuración web pública proporcionada por el propietario.
 export const firebaseConfig = {
   apiKey: "AIzaSyB8LEzU5myjycWzufZSUtC0Y_-HrtNDyOI",

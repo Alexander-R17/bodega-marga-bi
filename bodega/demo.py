@@ -60,23 +60,30 @@ class DemoRepository:
             return deepcopy(result)
         return None
 
-    def sale(self,op,items,payment):
+    def sale(self,op,items,payment,*,confirmed_total=None):
+        from decimal import Decimal
+        from bodega.payments import confirmed_amount
+        amount=confirmed_amount(confirmed_total)
         payload=(deepcopy(items),payment)
         result=self._operation(op,payload)
-        if result: return result
+        if result:
+            if Decimal(str(result["total"])) != amount: raise DataError("El total cambió. Revisa el carrito y confirma el pago nuevamente")
+            return result
         if len({x["producto_id"] for x in items})!=len(items) or not items: raise DataError("Cantidad inválida")
         for x in items:
             p=next(p for p in self.products if p["id"]==x["producto_id"])
             if not p["activo"] or x["cantidad"]<=0 or not 0<=x["descuento"]<=x["cantidad"]*p["precio"]: raise DataError("Cantidad inválida")
             if p["stock"]<x["cantidad"]: raise DataError("Stock insuficiente")
+        expected=sum((Decimal(str(next(p for p in self.products if p["id"]==x["producto_id"])["precio"]))*x["cantidad"]-Decimal(str(x["descuento"])) for x in items),Decimal(0))
+        if expected != amount: raise DataError("El total cambió. Revisa el carrito y confirma el pago nuevamente")
         vid=len(self.headers)+1; now=datetime.now(ZoneInfo("America/Lima"));date=now.date().isoformat(); total=0
         for x in items:
             p=next(p for p in self.products if p["id"]==x["producto_id"])
             self._line(vid,p,date,x["cantidad"],p["precio"],p["costo"],x["descuento"],payment,"POS")
             self.sales[-1]["fecha_hora"]=now.isoformat()
             p["stock"]-=x["cantidad"]; total+=self.sales[-1]["ingreso"]
-            self.movements.append({"id":len(self.movements)+1,"producto_id":p["id"],"tipo":"VENTA", "variacion":-x["cantidad"],"stock_resultante":p["stock"]})
-        self.headers.append({"id":vid,"fecha":date,"fecha_hora":now.isoformat(),"medio_pago":payment,"origen":"POS","estado":"COMPLETADA","total":round(total,2)})
+            self.movements.append({"id":len(self.movements)+1,"producto_id":p["id"],"tipo":"VENTA", "variacion":-x["cantidad"],"stock_resultante":p["stock"],"usuario_uid":"demo"})
+        self.headers.append({"id":vid,"fecha":date,"fecha_hora":now.isoformat(),"medio_pago":payment,"origen":"POS","estado":"COMPLETADA","total":round(total,2),"usuario_uid":"demo", "pago_confirmado_en":now.isoformat(),"pago_confirmado_por":"demo","pago_confirmado_total":float(amount)})
         result={"venta_id":vid,"total":round(total,2)}; self.operations[op]=(payload,result)
         return result
 

@@ -12,12 +12,13 @@ def test_sale_retry_and_stock():
     repo=DemoRepository()
     before=repo.products[0]["stock"]
     items=[{"producto_id":1,"cantidad":2,"descuento":.2}]
-    first=repo.sale("op-1",items,"Yape")
-    second=repo.sale("op-1",items,"Yape")
+    total=round(2*repo.products[0]["precio"]-.2,2)
+    first=repo.sale("op-1",items,"Yape",confirmed_total=total)
+    second=repo.sale("op-1",items,"Yape",confirmed_total=total)
     assert first==second
     assert repo.products[0]["stock"]==before-2
     with pytest.raises(DataError,match="reutilizada"):
-        repo.sale("op-1",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape")
+        repo.sale("op-1",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=total)
 
 
 def test_failed_cart_does_not_partially_reduce_stock():
@@ -25,13 +26,13 @@ def test_failed_cart_does_not_partially_reduce_stock():
     before=repo.products[0]["stock"]
     with pytest.raises(DataError,match="Stock insuficiente"):
         repo.sale("bad",[{"producto_id":1,"cantidad":1,"descuento":0},
-                         {"producto_id":3,"cantidad":1,"descuento":0}],"Efectivo")
+                         {"producto_id":3,"cantidad":1,"descuento":0}],"Efectivo",confirmed_total=10)
     assert repo.products[0]["stock"]==before
 
 
 def test_annul_is_idempotent_and_excludes_revenue():
     repo=DemoRepository(); before=repo.products[0]["stock"]
-    result=repo.sale("sale",[{"producto_id":1,"cantidad":2,"descuento":0}],"Plin")
+    result=repo.sale("sale",[{"producto_id":1,"cantidad":2,"descuento":0}],"Plin",confirmed_total=2*repo.products[0]["precio"])
     repo.annul("annul",result["venta_id"],"Error de caja")
     repo.annul("annul",result["venta_id"],"Error de caja")
     assert repo.products[0]["stock"]==before

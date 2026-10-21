@@ -29,6 +29,7 @@ def test_register_sale_through_ui(app):
     app.run()
     app.button(key="plus_checkout_1").click().run()
     app.radio(key="sale_payment").set_value("Yape").run()
+    app.checkbox(key="payment_received").check().run()
     next(b for b in app.button if b.label=="Confirmar venta").click().run()
     assert not app.exception and not app.error
     assert repo.products[0]["stock"]==before-2
@@ -44,12 +45,13 @@ def test_uncertain_sale_retries_same_operation_without_duplicate(app,monkeypatch
     app.session_state["shop_view"]="carrito";app.run()
     repo=app.session_state["demo_repo"];before=repo.products[0]["stock"]
     original=repo.sale;calls=[]
-    def interrupted(op,items,payment):
+    def interrupted(op,items,payment,**kwargs):
         calls.append(op)
-        result=original(op,items,payment)
+        result=original(op,items,payment,**kwargs)
         if len(calls)==1:raise DataError("Sin confirmación",confirmed_rejected=False)
         return result
     monkeypatch.setattr(repo,"sale",interrupted)
+    app.checkbox(key="payment_received").check().run()
     next(b for b in app.button if b.label=="Confirmar venta").click().run()
     assert "pending_sale" in app.session_state
     app.run()
@@ -58,6 +60,30 @@ def test_uncertain_sale_retries_same_operation_without_duplicate(app,monkeypatch
     assert len(calls)==2 and calls[0]==calls[1]
     assert repo.products[0]["stock"]==before-1
     assert "pending_sale" not in app.session_state
+
+
+def test_payment_must_be_confirmed_and_resets_when_cart_or_method_changes(app):
+    app.radio(key="page").set_value("Registrar venta").run()
+    app.button(key="add_1").click().run()
+    app.session_state["shop_view"]="carrito";app.run()
+    repo=app.session_state["demo_repo"];stock=repo.products[0]["stock"];sales=len(repo.headers)
+    confirm=lambda:next(b for b in app.button if b.label=="Confirmar venta")
+    assert confirm().disabled
+    from streamlit.testing.v1.errors import AppTestError
+    with pytest.raises(AppTestError):confirm().click()
+    assert len(repo.headers)==sales and repo.products[0]["stock"]==stock
+    app.run()
+    app.checkbox(key="payment_received").check().run()
+    assert not confirm().disabled
+    app.button(key="plus_checkout_1").click().run()
+    assert not app.checkbox(key="payment_received").value and confirm().disabled
+    app.checkbox(key="payment_received").check().run()
+    app.radio(key="sale_payment").set_value("Plin").run()
+    assert not app.checkbox(key="payment_received").value and confirm().disabled
+    app.checkbox(key="payment_received").check().run()
+    next(i for i in app.number_input if i.label=="Descuento S/").set_value(.2).run()
+    assert not app.checkbox(key="payment_received").value and confirm().disabled
+    assert len(repo.headers)==sales and repo.products[0]["stock"]==stock
 
 
 def test_catalog_filters_and_product_information(app):

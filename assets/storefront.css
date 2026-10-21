@@ -2,7 +2,9 @@
 html,body,[class*="stApp"]{font-family:"Helvetica Neue",Arial,sans-serif}
 .stApp{background:#fff;color:var(--ink)}
 .block-container{max-width:1510px;padding:1.5rem 2.4rem 1.3rem}
-header[data-testid="stHeader"]{background:rgba(255,255,255,.95)}
+/* Los controles propios de navegación y sesión siguen en el encabezado de la tienda. */
+header[data-testid="stHeader"],[data-testid="stToolbar"],[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],[data-testid="stAppDeployButton"],#MainMenu{display:none!important}
 [data-testid="stMain"]{scroll-padding-top:4rem}
 .st-key-masthead{padding:6px 0 12px;border-bottom:1px solid var(--line);margin-bottom:2px}
 .brand-lockup{display:flex;align-items:center;gap:11px;min-height:50px;white-space:nowrap}

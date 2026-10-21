@@ -18,9 +18,10 @@ Puedes usar tu proyecto existente o uno nuevo para el piloto. Si conservas el ex
 
 1. Abre SQL Editor, crea una consulta y ejecuta completo **`database/01_bodega_schema.sql`**.
    A continuación ejecuta **`database/03_catalogo_visual.sql`**, que añade la ficha visual de productos.
-   Finalmente ejecuta **`database/04_galeria_y_bi.sql`**, que añade la galería por URL, el cubo SQL y la medición por sesión.
+   Luego ejecuta **`database/04_galeria_y_bi.sql`**, que añade la galería por URL, el cubo SQL y la medición por sesión.
+   Finalmente ejecuta **`database/05_confirmacion_pago.sql`**, que vincula la confirmación manual del pago con el importe y el usuario de caja.
 2. Comprueba en Table Editor que existan `bodega_productos`, `bodega_ventas`, `bodega_detalle_venta` y `bodega_movimientos`.
-3. Obtén la URL del proyecto y la clave **legacy service_role** en la configuración de API. Esa clave va exclusivamente en **Secrets del servidor Streamlit**; no se utiliza una clave pública para operaciones privadas. El cliente de esta entrega usa el formato JWT legacy en Authorization.
+3. Obtén la URL del proyecto y una **clave secreta `sb_secret_...`** en **Settings → API Keys**. Esa clave va exclusivamente en **Secrets del servidor Streamlit**, en `SUPABASE_SERVICE_ROLE_KEY`, nombre que se mantiene por compatibilidad. También se admite una clave legacy `service_role` vigente del mismo proyecto. El cliente envía las claves nuevas mediante `apikey` y reserva `Authorization: Bearer` para las legacy JWT. Las claves públicas `anon` y `sb_publishable_...` no autorizan los objetos privados de esta aplicación.
 4. Mantén accesibles las tablas en el esquema `public` para la Data API. El script activa RLS y revoca acceso a `anon` y `authenticated` en los objetos nuevos. El servidor verificado usa `service_role`.
 5. Espera unos segundos si la Data API aún no detecta las funciones: el SQL notifica recarga de esquema.
 

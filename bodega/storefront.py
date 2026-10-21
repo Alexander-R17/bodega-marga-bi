@@ -11,6 +11,8 @@ from bodega.repository import DataError
 from bodega.ui import page_header, product_image, image_source, svg_uri, ROOT, status_badge
 from bodega.media import product_urls
 from bodega.telemetry import record
+from bodega.payments import fingerprint
+from bodega.staff import session_name, ROLE_LABELS
 
 PAGES = ["Inicio", "Registrar venta", "Inventario", "Resumen BI", "Reposición", "Pronóstico", "Importar historial", "Actividad y datos"]
 NAV_LABELS = {"Inicio":"Inicio", "Registrar venta":"Tienda interna", "Inventario":"Inventario",
@@ -172,10 +174,13 @@ def topbar(products, role, app_mode, logout):
                     cart_drawer(products, role)
     status, account = st.columns([8, 1.6], vertical_alignment="center")
     badge = '<span class="demo-label">DEMOSTRACIÓN · datos de ejemplo · cambios solo en esta sesión</span>' if app_mode == "demo" else '<span>Sistema interno · sesión verificada</span>'
-    status.markdown(f'<div class="session-line">{badge}<span>{html.escape(role)} · Los Olivos</span></div>', unsafe_allow_html=True)
+    name = session_name()
+    role_label = ROLE_LABELS.get(role, role)
+    status.markdown(f'<div class="session-line">{badge}<span>{html.escape(name)} · {html.escape(role_label)}</span></div>', unsafe_allow_html=True)
     with account:
         with st.popover("Mi sesión", width="stretch"):
-            st.caption(f"Rol: {role}")
+            st.write(name)
+            st.caption(f"Rol: {role_label}")
             label = "Reiniciar demostración" if app_mode == "demo" else "Cerrar sesión"
             if st.button(label):
                 logout()
@@ -309,18 +314,27 @@ def catalog_page(products, sales, role, repo=None):
             st.rerun()
 
 
-def _confirm(repo, payment, finish, notify):
-    pending = st.session_state.setdefault("pending_sale", {"op": str(uuid4()), "items": [dict(x) for x in _cart()], "payment": payment})
-    result = repo.sale(pending["op"], pending["items"], pending["payment"])
+def _confirm(repo, payment, products, finish, notify):
+    if "pending_sale" not in st.session_state:
+        rows = rules.lines(_cart(), products)
+        if not rows or any(not x["activo"] or x["cantidad"] > x["stock"] for x in rows):
+            raise DataError("Revisa la disponibilidad de los artículos antes de cobrar.")
+        if not st.session_state.get("payment_received") or st.session_state.get("checkout_fingerprint") != fingerprint(rows, payment):
+            raise DataError("Confirma que recibiste el pago completo antes de registrar la venta.")
+        st.session_state["pending_sale"] = {"op": str(uuid4()), "items": [dict(x) for x in _cart()],
+            "payment": payment, "confirmed_total": rules.totals(rows)["total"]}
+    pending = st.session_state["pending_sale"]
+    result = repo.sale(pending["op"], pending["items"], pending["payment"], confirmed_total=pending.get("confirmed_total"))
     st.session_state["last_sale_receipt"] = {"venta_id": result["venta_id"], "total": float(result["total"]), "payment": pending["payment"]}
     del st.session_state["pending_sale"]
     st.session_state["cart"] = []
+    st.session_state["reset_payment_confirmation"] = True
     notify(repo, "venta_confirmada")
     finish(f'Venta {result["venta_id"]} confirmada · {soles(result["total"])}')
 
 
 def checkout_page(repo, products, role, finish, notify):
-    page_header("Mi carrito", "Revisa los artículos y registra el medio de pago recibido.")
+    page_header("Mi carrito", "Revisa los artículos, recibe el pago y confirma la venta.")
     st.button("← Seguir agregando productos", on_click=open_catalog)
     receipt = st.session_state.get("last_sale_receipt")
     if receipt and not _cart():
@@ -329,9 +343,9 @@ def checkout_page(repo, products, role, finish, notify):
         pending = st.session_state["pending_sale"]
         st.warning("La venta está pendiente de confirmación. Reintenta con los mismos datos para evitar duplicarla.")
         st.dataframe(pd.DataFrame(pending["items"]), hide_index=True, width="stretch")
-        st.caption(f'Medio de pago: {pending["payment"]}')
+        st.caption(f'Pago confirmado en caja: {pending["payment"]} · {soles(pending.get("confirmed_total", 0))}. No vuelvas a cobrar al cliente.')
         if st.button("Reintentar venta pendiente", type="primary"):
-            _confirm(repo, pending["payment"], finish, notify)
+            _confirm(repo, pending["payment"], products, finish, notify)
         return
     _show_error()
     rows = rules.lines(_cart(), products)
@@ -364,13 +378,26 @@ def checkout_page(repo, products, role, finish, notify):
     with right:
         with st.container(key="order_summary"):
             st.subheader("Resumen de la venta")
-            _summary(rows)
+            amount = _summary(rows)
             st.markdown('<p class="checkout-label">Medio de pago recibido</p>', unsafe_allow_html=True)
             with st.container(key="payment_methods"):
                 payment = st.radio("Medio de pago", PAYMENTS, horizontal=True, label_visibility="collapsed", key="sale_payment")
-            st.caption("Registra cómo se recibió el pago en el establecimiento.")
-            if st.button("Confirmar venta", type="primary", width="stretch"):
-                _confirm(repo, payment, finish, notify)
+            current = fingerprint(rows, payment)
+            if st.session_state.pop("reset_payment_confirmation", False) or st.session_state.get("checkout_fingerprint") != current:
+                st.session_state["payment_received"] = False
+            st.session_state["checkout_fingerprint"] = current
+            valid = all(x["activo"] and x["cantidad"] <= x["stock"] for x in rows)
+            instructions = {"Efectivo": "Cuenta el efectivo recibido y entrega el vuelto que corresponda.",
+                "Yape": "Comprueba el ingreso en el Yape del negocio antes de confirmar.",
+                "Plin": "Comprueba el ingreso en el Plin del negocio antes de confirmar.",
+                "Tarjeta": "Comprueba que el POS indique pago aprobado por el importe completo.",
+                "Transferencia": "Comprueba el abono en la cuenta del negocio antes de confirmar."}
+            st.caption(instructions[payment])
+            received = st.checkbox(f'Confirmo que recibí {soles(amount["total"])} por {payment}',
+                key="payment_received", disabled=not valid)
+            if st.button("Confirmar venta", type="primary", width="stretch", disabled=not received or not valid):
+                _confirm(repo, payment, products, finish, notify)
+            st.caption("Verificación manual del cajero. La aplicación no consulta el estado del pago en bancos o billeteras.")
             st.caption("Registro interno de venta. No emite un comprobante tributario.")
 
 

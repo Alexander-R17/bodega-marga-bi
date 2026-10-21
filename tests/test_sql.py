@@ -30,6 +30,8 @@ def db():
     conn.execute((ROOT/"database/03_catalogo_visual.sql").read_text())
     conn.execute((ROOT/"database/04_galeria_y_bi.sql").read_text())
     conn.execute((ROOT/"database/04_galeria_y_bi.sql").read_text())
+    conn.execute((ROOT/"database/05_confirmacion_pago.sql").read_text())
+    conn.execute((ROOT/"database/05_confirmacion_pago.sql").read_text())
     conn.execute("TRUNCATE bodega_productos,bodega_categorias,bodega_proveedores,bodega_tiempo,bodega_ventas,bodega_detalle_venta,bodega_movimientos,bodega_operaciones,bodega_staging,bodega_lotes,bodega_predicciones,bodega_eventos,bodega_reposiciones RESTART IDENTITY CASCADE")
     conn.execute((ROOT/"database/02_catalogo_demo_OPCIONAL.sql").read_text())
     yield conn
@@ -126,3 +128,23 @@ def test_gallery_and_sql_cube_preserve_operational_data(db):
     db.execute("RESET ROLE; SET ROLE anon")
     with pytest.raises(psycopg.Error):db.execute("select * from bodega_v_cubo_ventas")
     with pytest.raises(psycopg.Error):db.execute("select bodega_guardar_producto_galeria('{}'::jsonb)")
+
+
+def test_payment_confirmation_is_required_atomic_and_idempotent(db):
+    import psycopg
+    items=json.dumps([{"producto_id":1,"cantidad":1,"descuento":0}])
+    query="select bodega_registrar_venta_pagada(%s,%s::jsonb,'Yape','test',%s,%s)"
+    db.execute("SET ROLE service_role")
+    for confirmed,total in [(False,4.8),(None,4.8),(True,None),(True,4.7)]:
+        with pytest.raises(psycopg.Error):db.execute(query,(uuid4(),items,confirmed,total))
+    assert db.execute("select stock from bodega_productos where id=1").fetchone()[0]==8
+    assert db.execute("select count(*) from bodega_ventas").fetchone()[0]==0
+    assert db.execute("select count(*) from bodega_operaciones where tipo='VENTA'").fetchone()[0]==0
+    op=uuid4();first=db.execute(query,(op,items,True,4.8)).fetchone()[0]
+    timestamp=db.execute("select pago_confirmado_en from bodega_ventas").fetchone()[0]
+    assert db.execute(query,(op,items,True,4.8)).fetchone()[0]==first
+    assert db.execute("select stock from bodega_productos where id=1").fetchone()[0]==7
+    row=db.execute("select pago_confirmado_por,pago_confirmado_total,pago_confirmado_en from bodega_ventas").fetchone()
+    assert row[0]=="test" and float(row[1])==4.8 and row[2]==timestamp
+    db.execute("RESET ROLE; SET ROLE anon")
+    with pytest.raises(psycopg.Error):db.execute(query,(uuid4(),items,True,4.8))

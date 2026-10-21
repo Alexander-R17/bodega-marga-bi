@@ -41,6 +41,8 @@ class CloudRepository:
                 raise DataError("Supabase denegó el acceso (403). Comprueba la clave privada del proyecto y los permisos de service_role sobre las tablas bodega_* y sus funciones.")
             if path == "rpc/bodega_guardar_producto_galeria" and r.status_code == 404:
                 raise DataError("Ejecuta database/04_galeria_y_bi.sql en Supabase para guardar varias imágenes.")
+            if path == "rpc/bodega_registrar_venta_pagada" and r.status_code == 404:
+                raise DataError("Ejecuta database/05_confirmacion_pago.sql en Supabase para activar la confirmación del pago.")
             if path == "rpc/bodega_guardar_producto_catalogo" and r.status_code == 404:
                 raise DataError("Ejecuta database/03_catalogo_visual.sql en Supabase para guardar las fotos y fichas del catálogo.")
             try:
@@ -50,7 +52,9 @@ class CloudRepository:
             # No devolver respuestas arbitrarias ni claves/URLs en pantalla.
             known = ("Stock insuficiente", "Producto inactivo", "Cantidad inválida", "Operación reutilizada",
                      "Lote ya procesado", "Código desconocido", "Ticket histórico ya existe",
-                     "Lote no válido", "Precio inválido", "No hay cambios", "Motivo requerido")
+                     "Lote no válido", "Precio inválido", "No hay cambios", "Motivo requerido",
+                     "El total cambió. Revisa el carrito y confirma el pago nuevamente",
+                     "Confirma el pago completo antes de registrar la venta", "Importe de pago confirmado inválido")
             friendly = next((m for m in known if m in msg), None)
             raise DataError(friendly or f"Supabase rechazó la operación ({r.status_code}). Revisa esquema, permisos y formato.", confirmed_rejected=r.status_code<500)
         return r.json() if r.content else None
@@ -77,9 +81,12 @@ class CloudRepository:
         payload = {**payload, "p_usuario": identity["uid"]}
         return self._request("POST", f"rpc/{name}", json=payload)
 
-    def sale(self, op, items, payment):
-        return self.rpc("bodega_registrar_venta", {"p_operacion": op, "p_items": items,
-                                                  "p_pago": payment}, ("administrador", "cajero"))
+    def sale(self, op, items, payment, *, confirmed_total=None):
+        from bodega.payments import confirmed_amount
+        amount = confirmed_amount(confirmed_total)
+        return self.rpc("bodega_registrar_venta_pagada", {"p_operacion": op, "p_items": items,
+            "p_pago": payment, "p_pago_confirmado": True, "p_total_confirmado": str(amount)},
+            ("administrador", "cajero"))
 
     def movement(self, op, product_id, kind, quantity, cost, reason):
         return self.rpc("bodega_registrar_movimiento", {"p_operacion": op, "p_producto": product_id,

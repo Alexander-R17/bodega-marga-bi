@@ -1,0 +1,34 @@
+{
+  "date": "2026-10-21",
+  "scope": "Nombres de responsables, confirmación manual del pago y vista limpia",
+  "python_tests": {
+    "passed": 71,
+    "skipped": 7,
+    "skip_reason": "La suite de integración PostgreSQL requiere TEST_DATABASE_URL; está configurada en GitHub Actions."
+  },
+  "embedded_postgresql": {
+    "engine": "PGlite",
+    "checks_passed": 6,
+    "checks": [
+      "Migración aditiva ejecutada dos veces y preservación de ventas anteriores",
+      "Sin confirmación o con importe inválido no persisten venta, movimiento ni operación",
+      "Reintento idempotente conserva fecha de pago y descuenta stock una sola vez",
+      "Reutilización de UUID con otro usuario o importe rechazada",
+      "Cambio de precio revierte la transacción completa",
+      "RPC privada: anon y authenticated no tienen acceso"
+    ]
+  },
+  "browser_qa": {
+    "engine": "Chromium 131, modo demo local",
+    "viewports": [[1440, 1050], [390, 844]],
+    "checks": [
+      "Encabezado técnico oculto y navegación propia disponible",
+      "Venta bloqueada hasta confirmar el pago",
+      "Cambio de cantidad o medio de pago reinicia la confirmación",
+      "Venta confirmada, carrito vacío y tabla de ventas/pagos accesible",
+      "Móvil sin desbordamiento horizontal"
+    ]
+  },
+  "firebase_users": "API oficial, con dobles de prueba: resolución por UID, lotes de 100, nombres faltantes y permisos de edición. No se usaron credenciales privadas del propietario.",
+  "remote_deployment_verified": false
+}

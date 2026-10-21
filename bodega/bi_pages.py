@@ -301,7 +301,8 @@ def data_page(repo,products,data,all_data,role,today):
             try:view=repo.table(mapping[selected])
             except DataError:
                 st.info("Aplica database/04_galeria_y_bi.sql para habilitar el cubo SQL.");return
-        table(view,"bi_almacen.csv")
+        from bodega.staff import present_activity
+        table(present_activity(view),"bi_almacen.csv")
         st.caption("Los filtros comerciales afectan a los hechos de venta. Las dimensiones y el cubo mensual SQL muestran el almacén completo. Los precios/costos de cada línea son históricos; la categoría y proveedor del catálogo reflejan su clasificación actual.")
         with st.expander("Grano, relaciones y reglas"):
             st.markdown("**Hecho:** producto por ticket completado. **Tiempo:** fecha → año, mes y día de semana. **Producto:** código y datos del artículo, enlazado a categoría y proveedor. **Medidas:** unidades, ventas, costo registrado, descuentos y margen bruto. Pago y origen son dimensiones del ticket. Las anulaciones no aportan a las ventas analíticas.")
@@ -322,7 +323,9 @@ def data_page(repo,products,data,all_data,role,today):
         with b:
             if not all_data.empty:draw(px.bar(bi.aggregate(all_data,["origen"]),x="origen",y="lineas",labels={"lineas":"Líneas de venta"}))
         st.caption("Sin hora o margen negativo son condiciones a revisar, no necesariamente errores. Esta página inspecciona el almacén completo, independientemente de los filtros comerciales.")
-        if not batches.empty:table(batches,"bi_lotes.csv")
+        if not batches.empty:
+            from bodega.staff import present_activity
+            table(present_activity(batches),"bi_lotes.csv")
         st.caption("CSV → validación → staging → ventas completadas → BI. Los lotes históricos no descuentan existencias actuales.")
     else:
         if role!="administrador":st.info("Los eventos de uso están disponibles para administración.");return
