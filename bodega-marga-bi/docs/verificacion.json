@@ -1,0 +1,19 @@
+{
+  "python_tests": {
+    "passed": 19,
+    "skipped": 4,
+    "skip_reason": "PostgreSQL real se ejecuta en CI o con TEST_DATABASE_URL"
+  },
+  "embedded_postgresql_checks": 14,
+  "remote_deployment_verified": false,
+  "versions_tested": {
+    "streamlit": "1.66.0",
+    "pandas": "2.2.3",
+    "numpy": "2.3.5",
+    "plotly": "6.9.0",
+    "requests": "2.34.2",
+    "scikit-learn": "1.8.0",
+    "firebase-admin": "7.7.0",
+    "pytest": "9.1.1"
+  }
+}
