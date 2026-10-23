@@ -14,10 +14,10 @@ from bodega.telemetry import record
 from bodega.payments import fingerprint
 from bodega.staff import session_name, ROLE_LABELS
 
-PAGES = ["Inicio", "Registrar venta", "Inventario", "Resumen BI", "Reposición", "Pronóstico", "Importar historial", "Actividad y datos"]
+PAGES = ["Inicio", "Registrar venta", "Historial de ventas", "Inventario", "Resumen BI", "Reposición", "Pronóstico", "Importar historial", "Actividad y datos"]
 NAV_LABELS = {"Inicio":"Inicio", "Registrar venta":"Tienda interna", "Inventario":"Inventario",
     "Resumen BI":"BI", "Reposición":"Reposición", "Pronóstico":"Pronóstico",
-    "Importar historial":"Importar", "Actividad y datos":"Actividad"}
+    "Importar historial":"Importar", "Actividad y datos":"Actividad", "Historial de ventas":"Ventas"}
 PAYMENTS = ["Efectivo", "Yape", "Plin", "Tarjeta", "Transferencia"]
 
 
@@ -158,8 +158,8 @@ def product_dialog(products, product_id, role, repo=None):
             st.markdown('<dl class="detail-specs">' + content + '</dl>', unsafe_allow_html=True)
 
 
-def topbar(products, role, app_mode, logout):
-    available = PAGES if role == "administrador" else [p for p in PAGES if p != "Importar historial" and (role == "cajero" or p != "Registrar venta")]
+def topbar(products, role, app_mode, logout, repo=None):
+    available = PAGES if role == "administrador" else [p for p in PAGES if p != "Importar historial" and (role == "cajero" or p not in {"Registrar venta","Historial de ventas"})]
     with st.container(key="masthead"):
         brand, navigation, cart = st.columns([2.2, 7.5, 1.1], vertical_alignment="center", gap="small")
         brand.markdown('<div class="brand-lockup"><span class="brand-monogram">M</span><span><strong class="brand-name">BODEGA MARGA</strong><span class="brand-sub">TIENDA INTELIGENTE · BI</span></span></div>', unsafe_allow_html=True)
@@ -185,6 +185,12 @@ def topbar(products, role, app_mode, logout):
             if st.button(label):
                 logout()
                 st.rerun()
+            if repo is not None and st.button('Actualizar datos'):
+                repo.clear_cache()
+                st.rerun()
+            if role=='administrador' and getattr(repo,'timings',None):
+                with st.expander('Tiempo de consultas de esta sesión'):
+                    st.dataframe(pd.DataFrame(repo.timings),hide_index=True,width='stretch')
     return page
 
 
@@ -319,13 +325,15 @@ def _confirm(repo, payment, products, finish, notify):
         rows = rules.lines(_cart(), products)
         if not rows or any(not x["activo"] or x["cantidad"] > x["stock"] for x in rows):
             raise DataError("Revisa la disponibilidad de los artículos antes de cobrar.")
-        if not st.session_state.get("payment_received") or st.session_state.get("checkout_fingerprint") != fingerprint(rows, payment):
+        context=st.session_state.get('checkout_context',{'customer':{},'reference':'','entity':''})
+        if not st.session_state.get("payment_received") or st.session_state.get("checkout_fingerprint") != fingerprint(rows, payment,**context):
             raise DataError("Confirma que recibiste el pago completo antes de registrar la venta.")
         st.session_state["pending_sale"] = {"op": str(uuid4()), "items": [dict(x) for x in _cart()],
-            "payment": payment, "confirmed_total": rules.totals(rows)["total"]}
+            "payment": payment, "confirmed_total": rules.totals(rows)["total"],**context}
     pending = st.session_state["pending_sale"]
-    result = repo.sale(pending["op"], pending["items"], pending["payment"], confirmed_total=pending.get("confirmed_total"))
-    st.session_state["last_sale_receipt"] = {"venta_id": result["venta_id"], "total": float(result["total"]), "payment": pending["payment"]}
+    result = repo.sale(pending["op"], pending["items"], pending["payment"], confirmed_total=pending.get("confirmed_total"),
+        customer=pending.get('customer'),reference=pending.get('reference',''),entity=pending.get('entity',''))
+    st.session_state["last_sale_receipt"] = {"venta_id": result["venta_id"], "total": float(result["total"]), "payment": pending["payment"], 'orden':result.get('orden',str(result['venta_id']))}
     del st.session_state["pending_sale"]
     st.session_state["cart"] = []
     st.session_state["reset_payment_confirmation"] = True
@@ -339,6 +347,8 @@ def checkout_page(repo, products, role, finish, notify):
     receipt = st.session_state.get("last_sale_receipt")
     if receipt and not _cart():
         st.markdown(f'<section class="receipt"><strong>Venta {receipt["venta_id"]} registrada</strong><p>{soles(receipt["total"])} · {html.escape(receipt["payment"])} · Consulta el resultado en BI o en actividad.</p></section>', unsafe_allow_html=True)
+        from bodega.receipts import receipt_panel
+        receipt_panel(repo,receipt['venta_id'])
     if "pending_sale" in st.session_state:
         pending = st.session_state["pending_sale"]
         st.warning("La venta está pendiente de confirmación. Reintenta con los mismos datos para evitar duplicarla.")
@@ -354,6 +364,15 @@ def checkout_page(repo, products, role, finish, notify):
         return
     left, right = st.columns([1.8, 1], gap="large")
     with left:
+        st.subheader('Cliente de la venta')
+        a,b=st.columns([1,2])
+        dni=a.text_input('DNI del cliente (opcional)',max_chars=8,key='sale_customer_dni')
+        name=b.text_input('Nombre del cliente (opcional)',max_chars=120,key='sale_customer_name')
+        st.caption('Puedes vender a Consumidor final dejando ambos campos vacíos. Si registras DNI, completa también el nombre.')
+        from bodega.checkout import customer_data,payment_data
+        customer={'dni':dni,'nombre':name}; customer_valid=True
+        try: customer=customer_data(customer)
+        except DataError as exc: st.error(str(exc));customer_valid=False
         st.subheader("Artículos de la venta")
         for line in rows:
             product = rules.product_row(products, line["producto_id"])
@@ -382,11 +401,28 @@ def checkout_page(repo, products, role, finish, notify):
             st.markdown('<p class="checkout-label">Medio de pago recibido</p>', unsafe_allow_html=True)
             with st.container(key="payment_methods"):
                 payment = st.radio("Medio de pago", PAYMENTS, horizontal=True, label_visibility="collapsed", key="sale_payment")
-            current = fingerprint(rows, payment)
+            reference=entity='';payment_valid=True
+            if st.session_state.get('checkout_payment_method')!=payment:
+                st.session_state['payment_reference']=''
+                st.session_state['checkout_payment_method']=payment
+            if payment!='Efectivo':
+                defaults={'Yape':'Yape del negocio','Plin':'Plin del negocio','Tarjeta':'POS del negocio','Transferencia':'BCP'}
+                entity=st.text_input('Entidad o cuenta receptora',value=defaults[payment],max_chars=60,key=f'payment_entity_{payment}')
+                reference=st.text_input('Código de operación del pago',max_chars=100,key='payment_reference',
+                    help='Referencia del abono o código de aprobación del POS. No ingreses el número de tarjeta.')
+                try:
+                    details=payment_data(payment,reference,entity)
+                    reference,entity=details['reference'],details['entity']
+                except DataError:
+                    payment_valid=False
+                    st.caption('Completa una referencia válida de al menos 4 caracteres para identificar el pago.')
+            context={'customer':customer,'reference':reference,'entity':entity}
+            st.session_state['checkout_context']=context
+            current = fingerprint(rows, payment,**context)
             if st.session_state.pop("reset_payment_confirmation", False) or st.session_state.get("checkout_fingerprint") != current:
                 st.session_state["payment_received"] = False
             st.session_state["checkout_fingerprint"] = current
-            valid = all(x["activo"] and x["cantidad"] <= x["stock"] for x in rows)
+            valid = customer_valid and payment_valid and all(x["activo"] and x["cantidad"] <= x["stock"] for x in rows)
             instructions = {"Efectivo": "Cuenta el efectivo recibido y entrega el vuelto que corresponda.",
                 "Yape": "Comprueba el ingreso en el Yape del negocio antes de confirmar.",
                 "Plin": "Comprueba el ingreso en el Plin del negocio antes de confirmar.",
@@ -398,7 +434,7 @@ def checkout_page(repo, products, role, finish, notify):
             if st.button("Confirmar venta", type="primary", width="stretch", disabled=not received or not valid):
                 _confirm(repo, payment, products, finish, notify)
             st.caption("Verificación manual del cajero. La aplicación no consulta el estado del pago en bancos o billeteras.")
-            st.caption("Registro interno de venta. No emite un comprobante tributario.")
+            st.caption("Al confirmar se guarda la orden y su ticket interno PDF. La boleta electrónica SUNAT requiere habilitar emisión tributaria.")
 
 
 def sale_page(repo, products, role, finish, notify, sales):

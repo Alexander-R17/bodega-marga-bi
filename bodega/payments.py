@@ -5,10 +5,11 @@ from decimal import Decimal, InvalidOperation
 from bodega.repository import DataError
 
 
-def fingerprint(lines, payment):
+def fingerprint(lines, payment, *, customer=None, reference="", entity=""):
     payload = {"payment": payment, "lines": [
         {key: line[key] for key in ("producto_id", "cantidad", "precio", "descuento")}
-        for line in sorted(lines, key=lambda item: item["producto_id"])]}
+        for line in sorted(lines, key=lambda item: item["producto_id"])],
+        "customer":customer or {},"reference":reference,"entity":entity}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 

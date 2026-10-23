@@ -1,5 +1,6 @@
 import requests
 import pandas as pd
+import time
 from bodega.config import setting
 from bodega.auth import require_identity, require_role
 
@@ -20,6 +21,9 @@ class CloudRepository:
             raise DataError("La conexión necesita una clave secreta de Supabase (sb_secret_...) o legacy service_role. Sustituye la clave pública en SUPABASE_SERVICE_ROLE_KEY dentro de Secrets.")
         if any(char.isspace() for char in self.key):
             raise DataError("Copia la clave de Supabase completa en una sola línea, sin espacios, dentro de SUPABASE_SERVICE_ROLE_KEY.")
+        self.http = requests.Session()
+        self._cache = {}
+        self.timings = []
 
     def _request(self, method, path, **kwargs):
         require_identity()
@@ -29,8 +33,9 @@ class CloudRepository:
         # La cabecera Bearer se conserva para service_role JWT de instalaciones anteriores.
         if not self.key.startswith("sb_secret_"):
             headers["Authorization"] = f"Bearer {self.key}"
+        started = time.monotonic()
         try:
-            r = requests.request(method, f"{self.url}/rest/v1/{path}",
+            r = self.http.request(method, f"{self.url}/rest/v1/{path}",
                                  headers=headers, timeout=40, **kwargs)
         except requests.RequestException:
             raise DataError("No se recibió confirmación de Supabase. Reintenta la misma operación; conserva su identificador.", confirmed_rejected=False) from None
@@ -43,6 +48,8 @@ class CloudRepository:
                 raise DataError("Ejecuta database/04_galeria_y_bi.sql en Supabase para guardar varias imágenes.")
             if path == "rpc/bodega_registrar_venta_pagada" and r.status_code == 404:
                 raise DataError("Ejecuta database/05_confirmacion_pago.sql en Supabase para activar la confirmación del pago.")
+            if path in {"rpc/bodega_registrar_venta_caja", "rpc/bodega_buscar_ventas", "rpc/bodega_ticket_venta"} and r.status_code == 404:
+                raise DataError("Ejecuta database/06_clientes_historial_ticket.sql en Supabase para activar clientes, historial y tickets.")
             if path == "rpc/bodega_guardar_producto_catalogo" and r.status_code == 404:
                 raise DataError("Ejecuta database/03_catalogo_visual.sql en Supabase para guardar las fotos y fichas del catálogo.")
             try:
@@ -54,39 +61,90 @@ class CloudRepository:
                      "Lote ya procesado", "Código desconocido", "Ticket histórico ya existe",
                      "Lote no válido", "Precio inválido", "No hay cambios", "Motivo requerido",
                      "El total cambió. Revisa el carrito y confirma el pago nuevamente",
-                     "Confirma el pago completo antes de registrar la venta", "Importe de pago confirmado inválido")
+                     "Confirma el pago completo antes de registrar la venta", "Importe de pago confirmado inválido",
+                     "Datos del cliente inválidos", "Referencia de pago requerida", "Referencia de pago ya utilizada",
+                     "Datos de caja cambiaron", "Venta no encontrada", "Filtros de ventas inválidos")
             friendly = next((m for m in known if m in msg), None)
             raise DataError(friendly or f"Supabase rechazó la operación ({r.status_code}). Revisa esquema, permisos y formato.", confirmed_rejected=r.status_code<500)
+        self.timings.append({"operacion": method+" "+path, "ms": round((time.monotonic()-started)*1000,1)})
+        self.timings = self.timings[-40:]
         return r.json() if r.content else None
 
-    def table(self, name):
+    def clear_cache(self):
+        self._cache.clear()
+
+    def table(self, name, *, since=None, until=None):
+        require_identity()
         allowed = {"bodega_productos", "bodega_categorias", "bodega_proveedores", "bodega_v_ventas",
                    "bodega_ventas", "bodega_movimientos", "bodega_lotes", "bodega_predicciones", "bodega_eventos", "bodega_reposiciones", "bodega_tiempo", "bodega_v_cubo_ventas"}
         if name not in allowed:
             raise DataError("Tabla no permitida.")
+        cache_key=(name,str(since),str(until))
+        ttl=300 if name in {"bodega_categorias","bodega_proveedores"} else 15
+        cached=self._cache.get(cache_key)
+        if cached and time.monotonic()-cached[0] < ttl:
+            return cached[1].copy(deep=True)
         # Paginar; no asumir que Supabase devuelve más de 1000 filas por petición.
         rows, offset = [], 0
         order = "id_detalle" if name == "bodega_v_ventas" else ("fecha" if name == "bodega_tiempo" else "id")
         while True:
-            page = self._request("GET", name, params={"select": "*", "order": order,
-                                                     "limit": 500, "offset": offset})
+            params={"select": self._select(name), "order": order, "limit":500, "offset":offset}
+            bounds=[]
+            if since: bounds.append(f"fecha.gte.{since}")
+            if until: bounds.append(f"fecha.lte.{until}")
+            if bounds: params["and"]="("+",".join(bounds)+")"
+            page = self._request("GET", name, params=params)
             rows.extend(page)
             if not page:
                 break
             offset += len(page)
-        return pd.DataFrame(rows)
+        data=pd.DataFrame(rows)
+        if len(self._cache)>=12: self._cache.pop(next(iter(self._cache)))
+        self._cache[cache_key]=(time.monotonic(),data)
+        return data.copy(deep=True)
+
+    @staticmethod
+    def _select(name):
+        # Las pantallas generales de BI/actividad no exponen datos personales.
+        if name=="bodega_ventas":
+            return "id,fecha_hora,fecha,medio_pago,origen,ticket_externo,lote_id,usuario_uid,estado,total,pago_confirmado_en,pago_confirmado_por,pago_confirmado_total"
+        return "*"
+
+    def recent_table(self, name, limit=250):
+        if name not in {"bodega_ventas","bodega_movimientos","bodega_lotes","bodega_predicciones","bodega_reposiciones","bodega_eventos"}:
+            raise DataError("Tabla no permitida.")
+        limit=max(1,min(int(limit),500))
+        order="creado_en.desc,id.desc" if name in {"bodega_lotes","bodega_predicciones"} else "fecha_hora.desc,id.desc"
+        return pd.DataFrame(self._request("GET",name,params={"select":self._select(name),"order":order,"limit":limit}))
 
     def rpc(self, name, payload, roles=("administrador",)):
         identity = require_role(*roles)
         payload = {**payload, "p_usuario": identity["uid"]}
-        return self._request("POST", f"rpc/{name}", json=payload)
+        self.clear_cache()
+        result=self._request("POST", f"rpc/{name}", json=payload)
+        self.clear_cache()
+        return result
 
-    def sale(self, op, items, payment, *, confirmed_total=None):
+    def sale(self, op, items, payment, *, confirmed_total=None, customer=None, reference="", entity=""):
         from bodega.payments import confirmed_amount
+        from bodega.checkout import customer_data,payment_data
         amount = confirmed_amount(confirmed_total)
-        return self.rpc("bodega_registrar_venta_pagada", {"p_operacion": op, "p_items": items,
-            "p_pago": payment, "p_pago_confirmado": True, "p_total_confirmado": str(amount)},
+        customer=customer_data(customer); details=payment_data(payment,reference,entity)
+        return self.rpc("bodega_registrar_venta_caja", {"p_operacion": op, "p_items": items,
+            "p_pago": payment, "p_pago_confirmado": True, "p_total_confirmado": str(amount),
+            "p_cliente":customer,"p_referencia":details["reference"],"p_entidad":details["entity"]},
             ("administrador", "cajero"))
+
+    def search_sales(self, since, until, query="", status="TODOS", payment="Todos", page=0, size=25):
+        require_role("administrador","cajero")
+        identity=require_identity()
+        return self._request("POST","rpc/bodega_buscar_ventas",json={
+            "p_desde":str(since),"p_hasta":str(until),"p_busqueda":query,"p_estado":status,
+            "p_pago":payment,"p_pagina":int(page),"p_tamano":int(size),"p_usuario":identity["uid"]})
+
+    def receipt(self, vid):
+        identity=require_role("administrador","cajero")
+        return self._request("POST","rpc/bodega_ticket_venta",json={"p_venta":int(vid),"p_usuario":identity["uid"]})
 
     def movement(self, op, product_id, kind, quantity, cost, reason):
         return self.rpc("bodega_registrar_movimiento", {"p_operacion": op, "p_producto": product_id,
@@ -94,7 +152,10 @@ class CloudRepository:
 
     def save_product(self, product):
         require_role("administrador")
-        return self._request("POST", "rpc/bodega_guardar_producto_galeria", json={"p_producto": product})
+        self.clear_cache()
+        result=self._request("POST", "rpc/bodega_guardar_producto_galeria", json={"p_producto": product})
+        self.clear_cache()
+        return result
 
     def create_batch(self, batch_id, name, sha, records):
         return self.rpc("bodega_crear_lote", {"p_id": batch_id, "p_nombre": name,

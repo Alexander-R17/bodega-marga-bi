@@ -22,7 +22,7 @@ class DemoRepository:
                 p[field+"_id"]=found["id"]
         raw=pd.read_csv(ROOT/"data/ventas_demo.csv", dtype={"codigo":str})
         self.sales=[]; self.headers=[]; self.movements=[]; self.batches=[]; self.staging={}
-        self.events=[]; self.predictions=[]; self.operations={}; self.decisions=[]
+        self.events=[]; self.predictions=[]; self.operations={}; self.decisions=[]; self.tickets={}
         for ticket, group in raw.groupby("ticket",sort=False):
             vid=len(self.headers)+1
             total=sum(float(r.cantidad*r.precio_unitario-r.descuento) for r in group.itertuples())
@@ -40,7 +40,14 @@ class DemoRepository:
             "ingreso":round(qty*price-disc,2),"margen_bruto":round(qty*(price-cost)-disc,2),
             "medio_pago":payment,"origen":origin})
 
-    def table(self,name):
+    def clear_cache(self):
+        pass
+
+    def recent_table(self,name,limit=250):
+        data=self.table(name)
+        return data.tail(limit).iloc[::-1].copy()
+
+    def table(self,name,*,since=None,until=None):
         if name == "bodega_tiempo":
             from bodega.bi import facts
             return facts(pd.DataFrame(self.sales))[["fecha", "anio", "mes", "dia_semana_num"]].drop_duplicates().rename(columns={"dia_semana_num":"dia_semana"}).assign(dia=lambda x:x.fecha.dt.day)
@@ -51,7 +58,12 @@ class DemoRepository:
             "bodega_v_ventas":[s for s in self.sales if self.headers[s["venta_id"]-1]["estado"]=="COMPLETADA"],
             "bodega_ventas":self.headers,"bodega_movimientos":self.movements,"bodega_lotes":self.batches,
             "bodega_eventos":self.events,"bodega_predicciones":self.predictions,"bodega_reposiciones":self.decisions}
-        return pd.DataFrame(deepcopy(mapping[name]))
+        data=pd.DataFrame(deepcopy(mapping[name]))
+        if not data.empty and "fecha" in data:
+            dates=pd.to_datetime(data.fecha)
+            if since: data=data.loc[dates>=pd.Timestamp(since)]
+            if until: data=data.loc[pd.to_datetime(data.fecha)<=pd.Timestamp(until)]
+        return data
 
     def _operation(self,op,payload):
         if op in self.operations:
@@ -60,15 +72,19 @@ class DemoRepository:
             return deepcopy(result)
         return None
 
-    def sale(self,op,items,payment,*,confirmed_total=None):
+    def sale(self,op,items,payment,*,confirmed_total=None,customer=None,reference="",entity=""):
         from decimal import Decimal
         from bodega.payments import confirmed_amount
         amount=confirmed_amount(confirmed_total)
-        payload=(deepcopy(items),payment)
+        from bodega.checkout import customer_data,payment_data,order_number
+        customer=customer_data(customer); details=payment_data(payment,reference,entity)
+        payload=(deepcopy(items),payment,deepcopy(customer),details)
         result=self._operation(op,payload)
         if result:
             if Decimal(str(result["total"])) != amount: raise DataError("El total cambió. Revisa el carrito y confirma el pago nuevamente")
             return result
+        if details['reference'] and any(h.get('medio_pago')==payment and h.get('pago_referencia')==details['reference'] and h.get('pago_entidad')==details['entity'] for h in self.headers):
+            raise DataError('Referencia de pago ya utilizada')
         if len({x["producto_id"] for x in items})!=len(items) or not items: raise DataError("Cantidad inválida")
         for x in items:
             p=next(p for p in self.products if p["id"]==x["producto_id"])
@@ -83,9 +99,43 @@ class DemoRepository:
             self.sales[-1]["fecha_hora"]=now.isoformat()
             p["stock"]-=x["cantidad"]; total+=self.sales[-1]["ingreso"]
             self.movements.append({"id":len(self.movements)+1,"producto_id":p["id"],"tipo":"VENTA", "variacion":-x["cantidad"],"stock_resultante":p["stock"],"usuario_uid":"demo"})
-        self.headers.append({"id":vid,"fecha":date,"fecha_hora":now.isoformat(),"medio_pago":payment,"origen":"POS","estado":"COMPLETADA","total":round(total,2),"usuario_uid":"demo", "pago_confirmado_en":now.isoformat(),"pago_confirmado_por":"demo","pago_confirmado_total":float(amount)})
-        result={"venta_id":vid,"total":round(total,2)}; self.operations[op]=(payload,result)
+        self.headers.append({"id":vid,"fecha":date,"fecha_hora":now.isoformat(),"medio_pago":payment,"origen":"POS","estado":"COMPLETADA","total":round(total,2),"usuario_uid":"demo", "pago_confirmado_en":now.isoformat(),"pago_confirmado_por":"demo","pago_confirmado_total":float(amount),
+            'cliente_dni':customer['dni'] or None,'cliente_nombre':customer['nombre'] or None,
+            'pago_referencia':details['reference'] or None,'pago_entidad':details['entity'] or None,'pago_validacion':'MANUAL_CAJA'})
+        self.tickets[vid]=self.receipt(vid)
+        self.tickets[vid].pop('datos_reconstruidos',None)
+        result={"venta_id":vid,"total":round(total,2),'orden':order_number(vid)}; self.operations[op]=(payload,result)
         return result
+
+    def receipt(self,vid):
+        from bodega.checkout import order_number
+        h=next((x for x in self.headers if x['id']==vid),None)
+        if h is None: raise DataError('Venta no encontrada')
+        if vid in self.tickets:
+            return {**deepcopy(self.tickets[vid]),'estado':h['estado']}
+        items=[{'codigo':s['codigo'],'nombre':s['nombre'],'cantidad':s['cantidad'],
+                'precio_unitario':s['precio_unitario'],'descuento':s['descuento'],'ingreso':s['ingreso']}
+               for s in self.sales if s['venta_id']==vid]
+        return {**deepcopy(h),'venta_id':vid,'orden':order_number(vid),'items':items,
+            'cliente_nombre':h.get('cliente_nombre') or 'Consumidor final',
+            'subtotal':round(sum(s['cantidad']*s['precio_unitario'] for s in items),2),
+            'descuento':round(sum(s['descuento'] for s in items),2),'datos_reconstruidos':True}
+
+    def search_sales(self,since,until,query='',status='TODOS',payment='Todos',page=0,size=25):
+        from bodega.checkout import order_number
+        if since>until or page<0 or not 1<=size<=100: raise DataError('Filtros de ventas inválidos')
+        result=[]; query=query.strip().casefold()
+        for header in self.headers:
+            h=deepcopy(header);h['orden']=order_number(h['id'])
+            h.setdefault('cliente_nombre','Consumidor final');h['cliente_nombre']=h['cliente_nombre'] or 'Consumidor final'
+            h.setdefault('cliente_dni',None);h.setdefault('pago_referencia',None)
+            if not str(since)<=str(h['fecha'])[:10]<=str(until): continue
+            if status!='TODOS' and h['estado']!=status: continue
+            if payment!='Todos' and h['medio_pago']!=payment: continue
+            if query and not any(query in str(h.get(k) or '').casefold() for k in ['id','orden','cliente_dni','cliente_nombre','ticket_externo']): continue
+            result.append(h)
+        result.sort(key=lambda h:(str(h['fecha']),str(h.get('fecha_hora') or h['fecha']),h['id']),reverse=True)
+        return {'total':len(result),'rows':result[page*size:(page+1)*size]}
 
     def movement(self,op,product_id,kind,quantity,cost,reason):
         payload=(product_id,kind,quantity,cost,reason); result=self._operation(op,payload)

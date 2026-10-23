@@ -1,4 +1,6 @@
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
 import requests
 import streamlit as st
 from bodega.config import setting
@@ -6,6 +8,19 @@ from bodega.config import setting
 
 class AccessError(Exception):
     pass
+
+
+_execution = ContextVar("bodega_identity_execution", default=None)
+
+
+@contextmanager
+def identity_scope():
+    """Verifica Firebase una vez por ejecución, nunca entre sesiones o reruns."""
+    marker = _execution.set({})
+    try:
+        yield
+    finally:
+        _execution.reset(marker)
 
 
 def role_for(claims):
@@ -88,7 +103,13 @@ def require_identity():
         raise AccessError("Inicia sesión para acceder.")
     # Verificación en cada ejecución: revocación, cuenta deshabilitada y expiración.
     # Duración máxima del token ~1 h; se solicita un nuevo acceso al expirar.
-    claims = verify(identity["token"])
+    scope = _execution.get()
+    token = identity["token"]
+    claims = scope.get(token) if scope is not None else None
+    if claims is None:
+        claims = verify(token)
+        if scope is not None:
+            scope[token] = claims
     role = role_for(claims)
     if claims["uid"] != identity["uid"]:
         raise AccessError("Sesión inconsistente.")
