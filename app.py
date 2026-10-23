@@ -8,7 +8,7 @@ import plotly.express as px
 import streamlit as st
 
 from bodega.config import mode
-from bodega.auth import AccessError, login, require_identity, logout, send_verification
+from bodega.auth import AccessError, login, require_identity, logout, send_verification, identity_scope
 from bodega.repository import CloudRepository, DataError
 from bodega.demo import DemoRepository
 from bodega.imports import validate_csv, COLUMNS
@@ -24,7 +24,7 @@ inject_css()
 
 ROOT = Path(__file__).resolve().parent
 TODAY = datetime.now(ZoneInfo("America/Lima")).date()
-PAGES = ["Inicio", "Registrar venta", "Inventario", "Resumen BI", "Reposición", "Pronóstico", "Importar historial", "Actividad y datos"]
+PAGES = storefront.PAGES
 
 
 def soles(value):
@@ -165,7 +165,7 @@ def inventory_page(repo,products,role):
             if st.button("Reintentar anulación"):
                 repo.annul(**pending); del st.session_state["pending_annul"]; finish("Venta anulada.")
         else:
-            headers=repo.table("bodega_ventas")
+            headers=repo.recent_table("bodega_ventas",30)
             valid=headers.loc[headers.estado=="COMPLETADA"] if not headers.empty else headers
             if valid.empty: st.info("No hay ventas para anular.")
             else:
@@ -276,7 +276,8 @@ def activity_page(repo,role):
     names={"Movimientos":"bodega_movimientos","Ventas y pagos":"bodega_ventas","Lotes":"bodega_lotes","Pronósticos":"bodega_predicciones","Decisiones de reposición":"bodega_reposiciones"}
     if role=="administrador": names["Eventos de uso"]="bodega_eventos"
     selected=st.selectbox("Datos",list(names))
-    data=repo.table(names[selected])
+    data=repo.recent_table(names[selected])
+    st.caption("Se muestran hasta 250 registros recientes. Para ventas con filtros y reimpresión utiliza Historial de ventas.")
     if data.empty: st.info("Aún no hay registros.")
     else:
         data=present_activity(data)
@@ -316,10 +317,21 @@ def main():
         except AccessError as exc:
             logout(); st.error(str(exc)); return
         role=identity["role"]
-        repo=CloudRepository()
+        repo=st.session_state.get("cloud_repo")
+        from bodega.config import setting
+        if repo is None or repo.url!=str(setting("SUPABASE_URL")).strip().rstrip("/") or repo.key!=str(setting("SUPABASE_SERVICE_ROLE_KEY")).strip():
+            if repo is not None: repo.http.close()
+            repo=CloudRepository()
+            st.session_state["cloud_repo"]=repo
     products=enrich_products(repo.table("bodega_productos"),repo.table("bodega_categorias"),repo.table("bodega_proveedores"))
-    sales=prepare_sales(repo.table("bodega_v_ventas"))
-    page=storefront.topbar(products,role,app_mode,logout)
+    page=storefront.topbar(products,role,app_mode,logout,repo=repo)
+    # Caja e inventario no necesitan descargar todo el historial en cada clic.
+    sales=prepare_sales(pd.DataFrame())
+    if page in {"Resumen BI","Pronóstico"}:
+        sales=prepare_sales(repo.table("bodega_v_ventas"))
+    elif page in {"Inicio","Reposición"} or (page=="Registrar venta" and st.session_state.get("catalog_sort")=="Más vendidos"):
+        days=7 if page=="Inicio" else 28
+        sales=prepare_sales(repo.table("bodega_v_ventas",since=TODAY-timedelta(days=days-1),until=TODAY))
     screen=f"{page}/{st.session_state.get('shop_view','catalogo')}" if page=="Registrar venta" else page
     if st.session_state.get("measured_screen")!=screen:
         event=("caja_abierta" if st.session_state.get("shop_view")=="carrito" else "catalogo_abierto") if page=="Registrar venta" else "pagina_visitada"
@@ -329,6 +341,9 @@ def main():
     if page=="Inicio":home_page(products,sales,role)
     elif page=="Resumen BI": overview(repo,products,sales,role)
     elif page=="Registrar venta": sale_page(repo,products,role,sales)
+    elif page=="Historial de ventas":
+        from bodega.sales_history import render
+        render(repo,role,TODAY)
     elif page=="Inventario": inventory_page(repo,products,role)
     elif page=="Reposición": replenish_page(repo,products,sales,role)
     elif page=="Pronóstico": forecast_page(repo,products,sales,role)
@@ -338,7 +353,8 @@ def main():
 
 
 try:
-    main()
+    with identity_scope():
+        main()
 except (DataError,AccessError,ValueError) as exc:
     if isinstance(exc,DataError) and exc.confirmed_rejected:
         if "pending_sale" in st.session_state:

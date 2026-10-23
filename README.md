@@ -70,3 +70,7 @@ python -m pytest -q
 Las pruebas con base PostgreSQL real requieren `TEST_DATABASE_URL` apuntando a una base desechable. La suite limpia únicamente sus tablas `bodega_*`; nunca apuntes esta variable a producción. GitHub Actions crea una instancia de prueba y ejecuta también ventas simultáneas.
 
 La operación comercial conserva todos los datos en Supabase. Los cálculos se ejecutan en el servidor Streamlit y los pronósticos se guardan en Supabase cuando el usuario confirma. Una laptop no necesita permanecer encendida para sostener el despliegue; la disponibilidad depende de los servicios y sus planes.
+## Actualización de caja e historial
+
+La migración `database/06_clientes_historial_ticket.sql` añade clientes identificados, referencias de pago, tickets internos inmutables y búsqueda paginada. La aplicación reduce consultas repetidas y verifica Firebase una vez por ejecución. Consulta [la guía de instalación y alcance](docs/10_RENDIMIENTO_CLIENTES_Y_TICKETS.md). La confirmación de pago sigue siendo manual y el ticket PDF no sustituye una boleta electrónica SUNAT.
+
