@@ -1,0 +1,31 @@
+{
+  "fecha_revision": "2026-10-24",
+  "base_publica": "https://github.com/Alexander-R17/bodega-marga-bi",
+  "python": {
+    "aprobadas": 82,
+    "omitidas": 9,
+    "motivo_omitidas": "Integración PostgreSQL nativa requiere una base local desechable bodega_test. SQL financiero comprobado con PGlite local."
+  },
+  "sql_local": {
+    "motor": "PGlite",
+    "comprobaciones": 14,
+    "produccion_modificada": false
+  },
+  "edge_function": {
+    "pruebas": 3,
+    "conexion_real_bancaria": false
+  },
+  "interfaz": {
+    "herramienta": "Streamlit AppTest",
+    "fiado_venta_abono_bi": true,
+    "ventana_espera_deteccion_revision_venta": true,
+    "chrome_visual": "No ejecutado: el entorno bloqueó un socket requerido por Chromium."
+  },
+  "pendiente_integracion_real": [
+    "S23 Ultra y formato real de notificaciones",
+    "Supabase del usuario y su función desplegada",
+    "Plin y transferencias: identificar banco y aplicación",
+    "Migración de interfaz React: se entrega propuesta, no implementación"
+  ],
+  "datos_reales_modificados": false
+}
