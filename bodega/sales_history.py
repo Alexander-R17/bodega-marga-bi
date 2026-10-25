@@ -25,7 +25,7 @@ def render(repo,role,today):
         query=c.text_input('DNI, cliente, orden o ticket',value=filters['query'],max_chars=120,key='history_search')
         a,b=st.columns(2)
         status=a.selectbox('Estado',['TODOS','COMPLETADA','ANULADA'],key='history_status')
-        payment=b.selectbox('Medio de pago',['Todos','Efectivo','Yape','Plin','Tarjeta','Transferencia'],key='history_payment')
+        payment=b.selectbox('Medio de pago',['Todos','Efectivo','Yape','Plin','Tarjeta','Transferencia','Fiado'],key='history_payment')
         search=st.form_submit_button('Buscar ventas',type='primary')
     if search:
         if since>until: st.error('La fecha inicial debe ser anterior o igual a la final.'); return

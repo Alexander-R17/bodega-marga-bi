@@ -14,10 +14,10 @@ from bodega.telemetry import record
 from bodega.payments import fingerprint
 from bodega.staff import session_name, ROLE_LABELS
 
-PAGES = ["Inicio", "Registrar venta", "Historial de ventas", "Inventario", "Resumen BI", "Reposición", "Pronóstico", "Importar historial", "Actividad y datos"]
+PAGES = ["Inicio", "Registrar venta", "Historial de ventas", "Fiados", "Inventario", "Resumen BI", "Reposición", "Pronóstico", "Importar historial", "Actividad y datos"]
 NAV_LABELS = {"Inicio":"Inicio", "Registrar venta":"Tienda interna", "Inventario":"Inventario",
     "Resumen BI":"BI", "Reposición":"Reposición", "Pronóstico":"Pronóstico",
-    "Importar historial":"Importar", "Actividad y datos":"Actividad", "Historial de ventas":"Ventas"}
+    "Importar historial":"Importar", "Actividad y datos":"Actividad", "Historial de ventas":"Ventas", "Fiados":"Fiados"}
 PAYMENTS = ["Efectivo", "Yape", "Plin", "Tarjeta", "Transferencia"]
 
 
@@ -44,7 +44,7 @@ def open_catalog():
 
 
 def _editable(role):
-    return role in {"administrador", "cajero"} and "pending_sale" not in st.session_state
+    return role in {"administrador", "cajero"} and not any(k in st.session_state for k in ('pending_sale','pending_credit','active_charge'))
 
 
 def _add(products, product_id, quantity, role, discount=0):
@@ -159,7 +159,7 @@ def product_dialog(products, product_id, role, repo=None):
 
 
 def topbar(products, role, app_mode, logout, repo=None):
-    available = PAGES if role == "administrador" else [p for p in PAGES if p != "Importar historial" and (role == "cajero" or p not in {"Registrar venta","Historial de ventas"})]
+    available = PAGES if role == "administrador" else [p for p in PAGES if p != "Importar historial" and (role == "cajero" or p not in {"Registrar venta","Historial de ventas","Fiados"})]
     with st.container(key="masthead"):
         brand, navigation, cart = st.columns([2.2, 7.5, 1.1], vertical_alignment="center", gap="small")
         brand.markdown('<div class="brand-lockup"><span class="brand-monogram">M</span><span><strong class="brand-name">BODEGA MARGA</strong><span class="brand-sub">TIENDA INTELIGENTE · BI</span></span></div>', unsafe_allow_html=True)
@@ -170,7 +170,7 @@ def topbar(products, role, app_mode, logout, repo=None):
         with cart:
             with st.container(key="cart_header"):
                 count = sum(x["cantidad"] for x in _cart())
-                if st.button(f"Carrito · {count}", icon=":material/shopping_bag:", key="open_cart", help="Abrir carrito de venta", disabled=role not in {"administrador", "cajero"}):
+                if st.button(f"Carrito · {count}", icon=":material/shopping_bag:", key="open_cart", help="Abrir carrito de venta", disabled=role not in {"administrador", "cajero"} or 'active_charge' in st.session_state):
                     cart_drawer(products, role)
     status, account = st.columns([8, 1.6], vertical_alignment="center")
     badge = '<span class="demo-label">DEMOSTRACIÓN · datos de ejemplo · cambios solo en esta sesión</span>' if app_mode == "demo" else '<span>Sistema interno · sesión verificada</span>'
@@ -343,6 +343,8 @@ def _confirm(repo, payment, products, finish, notify):
 
 def checkout_page(repo, products, role, finish, notify):
     page_header("Mi carrito", "Revisa los artículos, recibe el pago y confirma la venta.")
+    from bodega import credit,charge_wait
+    if credit.pending_checkout(repo,finish,notify) or charge_wait.active(repo):return
     st.button("← Seguir agregando productos", on_click=open_catalog)
     receipt = st.session_state.get("last_sale_receipt")
     if receipt and not _cart():
@@ -400,11 +402,15 @@ def checkout_page(repo, products, role, finish, notify):
             amount = _summary(rows)
             st.markdown('<p class="checkout-label">Medio de pago recibido</p>', unsafe_allow_html=True)
             with st.container(key="payment_methods"):
-                payment = st.radio("Medio de pago", PAYMENTS, horizontal=True, label_visibility="collapsed", key="sale_payment")
-            reference=entity='';payment_valid=True
+                payment = st.radio("Medio de pago", PAYMENTS+(['Fiado'] if credit.enabled() else []), horizontal=True, label_visibility="collapsed", key="sale_payment")
             if st.session_state.get('checkout_payment_method')!=payment:
                 st.session_state['payment_reference']=''
+                st.session_state['payment_received']=False
                 st.session_state['checkout_payment_method']=payment
+            if payment=='Fiado':
+                if customer_valid:credit.checkout(repo,rows,amount['total'],customer,_cart(),finish,notify)
+                return
+            reference=entity='';payment_valid=True
             if payment!='Efectivo':
                 defaults={'Yape':'Yape del negocio','Plin':'Plin del negocio','Tarjeta':'POS del negocio','Transferencia':'BCP'}
                 entity=st.text_input('Entidad o cuenta receptora',value=defaults[payment],max_chars=60,key=f'payment_entity_{payment}')
@@ -429,6 +435,7 @@ def checkout_page(repo, products, role, finish, notify):
                 "Tarjeta": "Comprueba que el POS indique pago aprobado por el importe completo.",
                 "Transferencia": "Comprueba el abono en la cuenta del negocio antes de confirmar."}
             st.caption(instructions[payment])
+            if payment=='Yape':charge_wait.checkout(repo,_cart(),customer,amount['total'],customer_valid and all(x['activo'] and x['cantidad']<=x['stock'] for x in rows))
             received = st.checkbox(f'Confirmo que recibí {soles(amount["total"])} por {payment}',
                 key="payment_received", disabled=not valid)
             if st.button("Confirmar venta", type="primary", width="stretch", disabled=not received or not valid):

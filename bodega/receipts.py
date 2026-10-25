@@ -44,7 +44,11 @@ def receipt_pdf(data):
         para(f"Medio de pago: {data['medio_pago']}")])
     if data.get('pago_referencia'):
         flow.extend([para(f"Entidad: {data.get('pago_entidad','')}"),para(f"Operación: {data['pago_referencia']}")])
-    flow.append(para('Pago confirmado manualmente en caja.' if data.get('pago_confirmado_en') else 'Sin verificación de pago registrada.',small))
+    if data.get('medio_pago')=='Fiado':
+        flow.extend([para('VENTA A FIADO · CUENTA POR COBRAR',small),para(f"Vencimiento: {data.get('fiado_vencimiento','Por consultar')}",small),
+                     para(f"Abonado: {money(data.get('fiado_abonado',0))} · Pendiente: {money(data.get('fiado_saldo',data['total']))}",small)])
+    else:
+        flow.append(para('Pago confirmado manualmente en caja.' if data.get('pago_confirmado_en') else 'Sin verificación de pago registrada.',small))
     if data.get('origen')=='HISTORICO': flow.append(para('Venta procedente del historial importado.',small))
     if data.get('datos_reconstruidos'):
         flow.append(para('Venta anterior a los tickets: descripción reconstruida con el catálogo disponible.',small))

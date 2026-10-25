@@ -15,9 +15,9 @@ def customer_data(customer=None):
 
 
 def payment_data(payment,reference="",entity=""):
-    if payment not in {"Efectivo","Yape","Plin","Tarjeta","Transferencia"}:
+    if payment not in {"Efectivo","Yape","Plin","Tarjeta","Transferencia","Fiado"}:
         raise DataError("Medio de pago inválido.")
-    if payment=="Efectivo": return {"reference":"","entity":""}
+    if payment in {"Efectivo","Fiado"}: return {"reference":"","entity":""}
     reference=str(reference or "").strip().upper()
     entity=" ".join(str(entity or "").split()).upper()
     if not re.fullmatch(r"[A-Z0-9._/-]{4,100}",reference) or not entity or len(entity)>60:

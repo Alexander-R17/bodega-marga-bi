@@ -50,6 +50,10 @@ class CloudRepository:
                 raise DataError("Ejecuta database/05_confirmacion_pago.sql en Supabase para activar la confirmación del pago.")
             if path in {"rpc/bodega_registrar_venta_caja", "rpc/bodega_buscar_ventas", "rpc/bodega_ticket_venta"} and r.status_code == 404:
                 raise DataError("Ejecuta database/06_clientes_historial_ticket.sql en Supabase para activar clientes, historial y tickets.")
+            if r.status_code==404 and any(path.startswith('rpc/'+prefix) for prefix in ('bodega_configurar_fiado','bodega_vender_fiado','bodega_abonar_fiado','bodega_anular_abono','bodega_consultar_fiado','bodega_resumen_fiado')):
+                raise DataError('Ejecuta database/08_fiado.sql en Supabase para activar las cuentas de fiado.')
+            if r.status_code==404 and any(path.startswith('rpc/'+prefix) for prefix in ('bodega_abrir_cobro','bodega_estado_cobro','bodega_finalizar_cobro','bodega_consultar_avisos','bodega_vincular_receptor','bodega_revocar_receptor')):
+                raise DataError('Ejecuta las migraciones 07 y 09 y despliega recibir-aviso-yape para activar la espera de pago.')
             if path == "rpc/bodega_guardar_producto_catalogo" and r.status_code == 404:
                 raise DataError("Ejecuta database/03_catalogo_visual.sql en Supabase para guardar las fotos y fichas del catálogo.")
             try:
@@ -63,7 +67,13 @@ class CloudRepository:
                      "El total cambió. Revisa el carrito y confirma el pago nuevamente",
                      "Confirma el pago completo antes de registrar la venta", "Importe de pago confirmado inválido",
                      "Datos del cliente inválidos", "Referencia de pago requerida", "Referencia de pago ya utilizada",
-                     "Datos de caja cambiaron", "Venta no encontrada", "Filtros de ventas inválidos")
+                     "Datos de caja cambiaron", "Venta no encontrada", "Filtros de ventas inválidos",
+                     'Datos de cuenta de fiado inválidos','Cuenta de fiado no encontrada','Cuenta de fiado bloqueada',
+                     'Fecha de fiado inválida','Límite de fiado insuficiente','El cliente tiene fiado vencido',
+                     'Abono de fiado inválido','El abono supera la deuda pendiente','La venta está anulada',
+                     'Anula primero los abonos del fiado y concilia la devolución','Abono no encontrado',
+                     'El receptor ya tiene un cobro pendiente','Receptor no autorizado','Cobro no encontrado',
+                     'El cobro requiere revisión','Comprueba el abono antes de registrar','La venta ya fue registrada')
             friendly = next((m for m in known if m in msg), None)
             raise DataError(friendly or f"Supabase rechazó la operación ({r.status_code}). Revisa esquema, permisos y formato.", confirmed_rejected=r.status_code<500)
         self.timings.append({"operacion": method+" "+path, "ms": round((time.monotonic()-started)*1000,1)})
@@ -145,6 +155,54 @@ class CloudRepository:
     def receipt(self, vid):
         identity=require_role("administrador","cajero")
         return self._request("POST","rpc/bodega_ticket_venta",json={"p_venta":int(vid),"p_usuario":identity["uid"]})
+
+    def credit_overview(self, query='', account=None):
+        identity=require_role('administrador','cajero')
+        return self._request('POST','rpc/bodega_consultar_fiado',json={'p_busqueda':str(query)[:120],
+            'p_cuenta':int(account) if account is not None else None,'p_usuario':identity['uid']})
+
+    def credit_summary(self, since, until):
+        identity=require_role('administrador','cajero','analista')
+        return self._request('POST','rpc/bodega_resumen_fiado',json={'p_desde':str(since),'p_hasta':str(until),'p_usuario':identity['uid']})
+
+    def configure_credit(self, dni, name, limit, active):
+        return self.rpc('bodega_configurar_fiado',{'p_dni':dni,'p_nombre':name,'p_limite':str(limit),'p_activo':active})
+
+    def credit_sale(self, op, items, account, due, total):
+        return self.rpc('bodega_vender_fiado',{'p_operacion':op,'p_items':items,'p_cuenta':int(account),
+            'p_vencimiento':str(due),'p_total_confirmado':str(total)},('administrador','cajero'))
+
+    def credit_payment(self, op, sale, amount, payment, reference='', entity=''):
+        from bodega.checkout import payment_data
+        from bodega.payments import confirmed_amount
+        details=payment_data(payment,reference,entity);amount=confirmed_amount(amount)
+        return self.rpc('bodega_abonar_fiado',{'p_id':op,'p_venta':int(sale),'p_importe':str(amount),
+            'p_pago':payment,'p_referencia':details['reference'],'p_entidad':details['entity'],'p_confirmado':True},('administrador','cajero'))
+
+    def reverse_credit_payment(self, payment, reason):
+        return self.rpc('bodega_anular_abono',{'p_id':str(payment),'p_motivo':reason})
+
+    def receivers(self):
+        identity=require_role('administrador','cajero')
+        return self._request('POST','rpc/bodega_consultar_avisos',json={'p_usuario':identity['uid']})['dispositivos']
+
+    def pair_receiver(self, device, name, token_hash):
+        return self.rpc('bodega_vincular_receptor',{'p_id':device,'p_nombre':name,'p_token_hash':token_hash})
+
+    def revoke_receiver(self, device):
+        return self.rpc('bodega_revocar_receptor',{'p_id':device})
+
+    def start_charge(self, op, device, items, customer, total):
+        return self.rpc('bodega_abrir_cobro',{'p_id':op,'p_dispositivo':device,'p_items':items,'p_cliente':customer,
+            'p_total':str(total)},('administrador','cajero'))
+
+    def charge_status(self, op):
+        identity=require_role('administrador','cajero')
+        return self._request('POST','rpc/bodega_estado_cobro',json={'p_id':op,'p_usuario':identity['uid']})
+
+    def finish_charge(self, op, *, cancel=False, reference='', entity='YAPE DEL NEGOCIO', reviewed=False):
+        return self.rpc('bodega_finalizar_cobro',{'p_id':op,'p_accion':'CANCELAR' if cancel else 'REGISTRAR',
+            'p_referencia':reference,'p_entidad':entity,'p_revisado':reviewed},('administrador','cajero'))
 
     def movement(self, op, product_id, kind, quantity, cost, reason):
         return self.rpc("bodega_registrar_movimiento", {"p_operacion": op, "p_producto": product_id,

@@ -13,7 +13,7 @@ from bodega.analytics import csv_export
 from bodega.repository import DataError
 from bodega.telemetry import record
 
-PAGES=["Resumen ejecutivo","Ventas y rentabilidad","Diagnóstico e inventario","Cubo OLAP","Predicciones","Datos y uso"]
+PAGES=["Resumen ejecutivo","Ventas y rentabilidad","Diagnóstico e inventario","Cubo OLAP","Predicciones","Datos y uso","Fiados y cobranza"]
 COLORS=["#2e775f","#dfa77e","#9abfb0","#91a9b5","#bf9f87","#708a79"]
 px.defaults.color_discrete_sequence=COLORS
 
@@ -41,7 +41,7 @@ def section(title,question):
 
 def _step(delta):
     current=st.session_state.get("bi_page",PAGES[0])
-    st.session_state["bi_page"]=PAGES[max(0,min(5,PAGES.index(current)+delta))]
+    st.session_state["bi_page"]=PAGES[max(0,min(len(PAGES)-1,PAGES.index(current)+delta))]
 
 
 def _clear_filters():
@@ -365,11 +365,32 @@ def dashboard(repo,products,sales,role,today,prediction_page):
         record(repo,"pagina_bi_visitada",page,page="BI / "+page)
         st.session_state["measured_bi_page"]=page
     a,b,c=st.columns([6,1.2,1.2])
-    a.caption(f"Página {PAGES.index(page)+1} de 6 · {page}")
+    a.caption(f"Página {PAGES.index(page)+1} de {len(PAGES)} · {page}")
     b.button("← Anterior",on_click=_step,args=(-1,),disabled=page==PAGES[0],width="stretch")
     c.button("Siguiente →",on_click=_step,args=(1,),disabled=page==PAGES[-1],width="stretch")
     if page=="Predicciones":
         prediction_page(repo,products,sales,role,embedded=True);return
+    if page=='Fiados y cobranza':
+        from bodega.credit import enabled
+        if not enabled():st.info('Activa CREDIT_ENABLED después de ejecutar SQL 08.');return
+        a,b=st.columns(2)
+        since=a.date_input('Fiados desde',value=today-timedelta(days=29),key='credit_bi_since')
+        until=b.date_input('Fiados hasta',value=today,key='credit_bi_until')
+        if since>until or (until-since).days>366:st.info('Selecciona hasta 366 días, con inicio anterior al fin.');return
+        result=repo.credit_summary(since,until)
+        a,b,c,d=st.columns(4)
+        a.metric('Vendido a fiado · período',money(result['credito_periodo']))
+        b.metric('Abonos recibidos · período',money(result['abonos_periodo']))
+        c.metric('Deuda pendiente · hoy',money(result['cartera_actual']))
+        d.metric('Deuda vencida · hoy',money(result['vencido_actual']))
+        st.caption('La venta a fiado cuenta una vez en ventas. El abono recupera dinero y no genera otra venta. La cartera y el vencido son saldos actuales de toda la bodega, independientes del período seleccionado.')
+        data=pd.DataFrame(result['serie'])
+        if data.empty:st.info('No hay movimientos de fiado en este período.');return
+        data['credito']=pd.to_numeric(data.credito);data['abonos']=pd.to_numeric(data.abonos)
+        left,right=st.columns(2)
+        with left:draw(px.bar(data,x='fecha',y='credito',labels={'fecha':'Fecha','credito':'Vendido a fiado S/'}))
+        with right:draw(px.bar(data,x='fecha',y='abonos',labels={'fecha':'Fecha','abonos':'Abonos recibidos S/'}))
+        table(data,'bi_fiados_cobranza.csv');return
     filters,body=st.columns([1,4.7],gap="large")
     with filters:state=filters_panel(data,products,today)
     with body:

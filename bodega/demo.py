@@ -3,13 +3,15 @@ from copy import deepcopy
 from pathlib import Path
 from datetime import datetime
 from zoneinfo import ZoneInfo
+from decimal import Decimal
 import pandas as pd
 from bodega.repository import DataError
+from bodega.credit_demo import CreditDemo
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class DemoRepository:
+class DemoRepository(CreditDemo):
     def __init__(self):
         self.products = pd.read_csv(ROOT/"data/productos_demo.csv", dtype={"codigo":str}).to_dict("records")
         self.categories, self.suppliers = [], []
@@ -85,6 +87,8 @@ class DemoRepository:
             return result
         if details['reference'] and any(h.get('medio_pago')==payment and h.get('pago_referencia')==details['reference'] and h.get('pago_entidad')==details['entity'] for h in self.headers):
             raise DataError('Referencia de pago ya utilizada')
+        if details['reference'] and any(a['medio_pago']==payment and a.get('pago_referencia')==details['reference'] and a.get('pago_entidad')==details['entity'] for a in getattr(self,'credit_payments',[])):
+            raise DataError('Referencia de pago ya utilizada')
         if len({x["producto_id"] for x in items})!=len(items) or not items: raise DataError("Cantidad inválida")
         for x in items:
             p=next(p for p in self.products if p["id"]==x["producto_id"])
@@ -102,6 +106,8 @@ class DemoRepository:
         self.headers.append({"id":vid,"fecha":date,"fecha_hora":now.isoformat(),"medio_pago":payment,"origen":"POS","estado":"COMPLETADA","total":round(total,2),"usuario_uid":"demo", "pago_confirmado_en":now.isoformat(),"pago_confirmado_por":"demo","pago_confirmado_total":float(amount),
             'cliente_dni':customer['dni'] or None,'cliente_nombre':customer['nombre'] or None,
             'pago_referencia':details['reference'] or None,'pago_entidad':details['entity'] or None,'pago_validacion':'MANUAL_CAJA'})
+        if payment=='Fiado':
+            self.headers[-1].update(pago_confirmado_en=None,pago_confirmado_por=None,pago_confirmado_total=None,pago_validacion='CREDITO_FIADO')
         self.tickets[vid]=self.receipt(vid)
         self.tickets[vid].pop('datos_reconstruidos',None)
         result={"venta_id":vid,"total":round(total,2),'orden':order_number(vid)}; self.operations[op]=(payload,result)
@@ -112,7 +118,13 @@ class DemoRepository:
         h=next((x for x in self.headers if x['id']==vid),None)
         if h is None: raise DataError('Venta no encontrada')
         if vid in self.tickets:
-            return {**deepcopy(self.tickets[vid]),'estado':h['estado']}
+            result={**deepcopy(self.tickets[vid]),'estado':h['estado']}
+            if h['medio_pago']=='Fiado' and hasattr(self,'credit_charges'):
+                charge=next((c for c in self.credit_charges if c['venta_id']==vid),None)
+                if charge:
+                    balance=self._credit_balance(vid)
+                    result.update(fiado_vencimiento=charge['vencimiento'],fiado_abonado=str(Decimal(str(charge['importe']))-balance),fiado_saldo=str(balance if h['estado']=='COMPLETADA' else Decimal(0)))
+            return result
         items=[{'codigo':s['codigo'],'nombre':s['nombre'],'cantidad':s['cantidad'],
                 'precio_unitario':s['precio_unitario'],'descuento':s['descuento'],'ingreso':s['ingreso']}
                for s in self.sales if s['venta_id']==vid]
@@ -192,6 +204,8 @@ class DemoRepository:
         payload=(vid,reason); result=self._operation(op,payload)
         if result: return result
         h=self.headers[vid-1]
+        if h['medio_pago']=='Fiado' and any(a['venta_id']==vid and not a.get('anulado_en') for a in getattr(self,'credit_payments',[])):
+            raise DataError('Anula primero los abonos del fiado y concilia la devolución')
         if h["estado"]=="COMPLETADA" and h["origen"]=="POS":
             for line in self.sales:
                 if line["venta_id"]==vid:
