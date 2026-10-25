@@ -30,7 +30,7 @@ def test_rest_headers_for_server_key_types(monkeypatch, key, uses_bearer):
     def request(method, url, **kwargs):
         captured.update(method=method, url=url, **kwargs)
         return response(200, [{"id": 1}])
-    monkeypatch.setattr(module.requests, "request", request)
+    monkeypatch.setattr(repo.http, "request", request)
     assert repo._request("GET", "bodega_productos", params={"limit": 1}) == [{"id": 1}]
     assert captured["url"] == "https://example.supabase.co/rest/v1/bodega_productos"
     assert captured["headers"]["apikey"] == key
@@ -55,7 +55,7 @@ def test_invalid_server_configuration_is_actionable(monkeypatch, key, message):
 @pytest.mark.parametrize("status", [401, 403])
 def test_auth_error_is_actionable_without_echoing_remote_data(monkeypatch, status):
     repo = make_repo(monkeypatch, "sb_secret_TEST_ONLY")
-    monkeypatch.setattr(module.requests, "request", lambda *args, **kwargs:
+    monkeypatch.setattr(repo.http, "request", lambda *args, **kwargs:
         response(status, {"message": "PRIVATE_DIAGNOSTIC_SHOULD_NOT_BE_DISPLAYED"}))
     with pytest.raises(module.DataError) as exc:
         repo._request("GET", "bodega_productos")
@@ -70,7 +70,7 @@ def test_transport_failure_remains_uncertain(monkeypatch):
     repo = make_repo(monkeypatch, "sb_secret_TEST_ONLY")
     def timeout(*args, **kwargs):
         raise requests.Timeout("PRIVATE_TRANSPORT_DETAILS")
-    monkeypatch.setattr(module.requests, "request", timeout)
+    monkeypatch.setattr(repo.http, "request", timeout)
     with pytest.raises(module.DataError) as exc:
         repo._request("POST", "rpc/bodega_registrar_venta", json={})
     assert not exc.value.confirmed_rejected
@@ -93,8 +93,8 @@ def test_sale_sends_confirmed_amount_and_verified_actor(monkeypatch):
         captured.update(method=method,path=path,**kwargs)
         return {"venta_id":1,"total":4.8}
     monkeypatch.setattr(repo,"_request",request)
-    repo.sale("op",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=4.8)
-    assert captured["path"]=="rpc/bodega_registrar_venta_pagada"
+    repo.sale("op",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=4.8,reference='TEST-001',entity='YAPE')
+    assert captured["path"]=="rpc/bodega_registrar_venta_caja"
     assert captured["json"]["p_pago_confirmado"] is True
     assert captured["json"]["p_total_confirmado"]=="4.8"
     assert captured["json"]["p_usuario"]=="verified-cashier"

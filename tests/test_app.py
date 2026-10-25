@@ -13,7 +13,7 @@ def app(monkeypatch):
 
 def test_all_pages_render(app):
     assert not app.exception
-    for page in ["Resumen BI","Registrar venta","Inventario","Reposición","Pronóstico","Importar historial","Actividad y datos"]:
+    for page in ["Resumen BI","Registrar venta","Historial de ventas","Fiados","Inventario","Reposición","Pronóstico","Importar historial","Actividad y datos"]:
         app.radio(key="page").set_value(page).run()
         assert not app.exception
         assert not app.error
@@ -29,6 +29,7 @@ def test_register_sale_through_ui(app):
     app.run()
     app.button(key="plus_checkout_1").click().run()
     app.radio(key="sale_payment").set_value("Yape").run()
+    app.text_input(key='payment_reference').set_value('TEST-001').run()
     app.checkbox(key="payment_received").check().run()
     next(b for b in app.button if b.label=="Confirmar venta").click().run()
     assert not app.exception and not app.error
@@ -80,6 +81,7 @@ def test_payment_must_be_confirmed_and_resets_when_cart_or_method_changes(app):
     app.checkbox(key="payment_received").check().run()
     app.radio(key="sale_payment").set_value("Plin").run()
     assert not app.checkbox(key="payment_received").value and confirm().disabled
+    app.text_input(key='payment_reference').set_value('TEST-002').run()
     app.checkbox(key="payment_received").check().run()
     next(i for i in app.number_input if i.label=="Descuento S/").set_value(.2).run()
     assert not app.checkbox(key="payment_received").value and confirm().disabled

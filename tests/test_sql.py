@@ -19,6 +19,10 @@ def db():
     import psycopg
     dsn=os.getenv("TEST_DATABASE_URL")
     if not dsn:pytest.skip("TEST_DATABASE_URL no configurada: integración PostgreSQL se ejecuta en GitHub Actions")
+    from psycopg.conninfo import conninfo_to_dict
+    config=conninfo_to_dict(dsn)
+    if config.get('host') not in {'127.0.0.1','localhost','::1'} or config.get('dbname')!='bodega_test':
+        pytest.skip('Integración destructiva restringida a PostgreSQL local desechable bodega_test; nunca Supabase.')
     conn=psycopg.connect(dsn,autocommit=True)
     # Solo para una base nueva de pruebas. Jamás usar un DSN productivo.
     conn.execute("DO $$ BEGIN CREATE ROLE anon; EXCEPTION WHEN duplicate_object THEN NULL; END $$")
@@ -32,7 +36,10 @@ def db():
     conn.execute((ROOT/"database/04_galeria_y_bi.sql").read_text())
     conn.execute((ROOT/"database/05_confirmacion_pago.sql").read_text())
     conn.execute((ROOT/"database/05_confirmacion_pago.sql").read_text())
-    conn.execute("TRUNCATE bodega_productos,bodega_categorias,bodega_proveedores,bodega_tiempo,bodega_ventas,bodega_detalle_venta,bodega_movimientos,bodega_operaciones,bodega_staging,bodega_lotes,bodega_predicciones,bodega_eventos,bodega_reposiciones RESTART IDENTITY CASCADE")
+    for name in ['06_clientes_historial_ticket.sql','07_piloto_avisos_yape.sql','08_fiado.sql','09_espera_cobros.sql']:
+        conn.execute((ROOT/'database'/name).read_text())
+        conn.execute((ROOT/'database'/name).read_text())
+    conn.execute("TRUNCATE bodega_cobros,bodega_pago_avisos,bodega_pago_dispositivos,bodega_referencias_pago,bodega_fiado_cuentas,bodega_clientes,bodega_productos,bodega_categorias,bodega_proveedores,bodega_tiempo,bodega_ventas,bodega_detalle_venta,bodega_movimientos,bodega_operaciones,bodega_staging,bodega_lotes,bodega_predicciones,bodega_eventos,bodega_reposiciones RESTART IDENTITY CASCADE")
     conn.execute((ROOT/"database/02_catalogo_demo_OPCIONAL.sql").read_text())
     yield conn
     conn.close()
@@ -81,6 +88,36 @@ def test_db_private_tables_and_rpc(db):
     with pytest.raises(psycopg.Error):db.execute("select * from bodega_productos")
     with pytest.raises(psycopg.Error):sell(db,uuid4(),[{"producto_id":1,"cantidad":1,"descuento":0}])
     with pytest.raises(psycopg.Error):db.execute("select bodega_guardar_producto_catalogo('{}'::jsonb)")
+
+
+def test_db_credit_limit_serializes_two_cashiers(db):
+    import psycopg
+    from psycopg.conninfo import conninfo_to_dict
+    account=db.execute("select bodega_configurar_fiado('12345678','Cliente prueba',5,true,'admin')").fetchone()[0]['cuenta_id']
+    due=db.execute("select (now() at time zone 'America/Lima')::date+7").fetchone()[0]
+    def buy(_):
+        with psycopg.connect(os.environ['TEST_DATABASE_URL'],autocommit=True) as conn:
+            try:
+                return conn.execute("select bodega_vender_fiado(%s,%s::jsonb,%s,%s,4.8,'cashier')",(
+                    uuid4(),json.dumps([{'producto_id':1,'cantidad':1,'descuento':0}]),account,due)).fetchone()[0]
+            except psycopg.Error:return None
+    with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(buy,range(2)))
+    assert sum(x is not None for x in results)==1
+    assert db.execute('select stock from bodega_productos where id=1').fetchone()[0]==7
+    assert float(db.execute('select bodega_saldo_fiado(%s)',(account,)).fetchone()[0])==4.8
+
+
+def test_db_wait_dedup_never_registers_without_review(db):
+    from datetime import datetime,timezone
+    import psycopg
+    device=uuid4();charge=uuid4();hash='a'*64
+    db.execute("select bodega_vincular_receptor(%s,'Receptor prueba',%s,'admin')",(device,hash))
+    db.execute("select bodega_abrir_cobro(%s,%s,%s::jsonb,'{}',4.8,'cashier')",(charge,device,json.dumps([{'producto_id':1,'cantidad':1,'descuento':0}])))
+    event={'event_id':'b'*64,'package':'com.bcp.innovacxion.yapeapp','amount_cents':480,'notified_at':datetime.now(timezone.utc).isoformat()}
+    for _ in range(2):db.execute('select bodega_recibir_aviso(%s,%s,%s::jsonb)',(device,hash,json.dumps(event)))
+    assert db.execute("select bodega_estado_cobro(%s,'cashier')",(charge,)).fetchone()[0]['estado']=='DETECTADO'
+    assert db.execute('select count(*) from bodega_ventas').fetchone()[0]==0
+    with pytest.raises(psycopg.Error):db.execute("select bodega_finalizar_cobro(%s,'REGISTRAR','TEST-001','YAPE',false,'cashier')",(charge,))
 
 
 def test_catalog_metadata_preserves_stock_and_historical_sales(db):

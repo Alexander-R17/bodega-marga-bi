@@ -13,12 +13,12 @@ def test_sale_retry_and_stock():
     before=repo.products[0]["stock"]
     items=[{"producto_id":1,"cantidad":2,"descuento":.2}]
     total=round(2*repo.products[0]["precio"]-.2,2)
-    first=repo.sale("op-1",items,"Yape",confirmed_total=total)
-    second=repo.sale("op-1",items,"Yape",confirmed_total=total)
+    first=repo.sale("op-1",items,"Yape",confirmed_total=total,reference='TEST-001',entity='YAPE')
+    second=repo.sale("op-1",items,"Yape",confirmed_total=total,reference='TEST-001',entity='YAPE')
     assert first==second
     assert repo.products[0]["stock"]==before-2
     with pytest.raises(DataError,match="reutilizada"):
-        repo.sale("op-1",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=total)
+        repo.sale("op-1",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=total,reference='TEST-001',entity='YAPE')
 
 
 def test_failed_cart_does_not_partially_reduce_stock():
@@ -32,7 +32,7 @@ def test_failed_cart_does_not_partially_reduce_stock():
 
 def test_annul_is_idempotent_and_excludes_revenue():
     repo=DemoRepository(); before=repo.products[0]["stock"]
-    result=repo.sale("sale",[{"producto_id":1,"cantidad":2,"descuento":0}],"Plin",confirmed_total=2*repo.products[0]["precio"])
+    result=repo.sale("sale",[{"producto_id":1,"cantidad":2,"descuento":0}],"Plin",confirmed_total=2*repo.products[0]["precio"],reference='TEST-002',entity='PLIN')
     repo.annul("annul",result["venta_id"],"Error de caja")
     repo.annul("annul",result["venta_id"],"Error de caja")
     assert repo.products[0]["stock"]==before
@@ -99,6 +99,7 @@ def test_export_neutralizes_spreadsheet_formula():
 def test_pagination_reads_all_pages(monkeypatch):
     import bodega.repository as module
     monkeypatch.setattr(module,"setting",lambda key:"https://example.supabase.co" if key=="SUPABASE_URL" else "test")
+    monkeypatch.setattr(module,'require_identity',lambda:{'uid':'test-user'})
     repo=CloudRepository()
     calls=[]
     def request(method,path,**kwargs):

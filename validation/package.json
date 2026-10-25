@@ -1,0 +1,11 @@
+{
+  "name": "bodega-validacion-financiera",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node check-finance.mjs && node --test ../tests/edge_charge.mjs"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.11"
+  }
+}
