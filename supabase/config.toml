@@ -1,0 +1,3 @@
+[functions.recibir-aviso-yape]
+# La función comprueba la credencial revocable del receptor.
+verify_jwt = false
