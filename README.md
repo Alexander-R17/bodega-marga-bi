@@ -74,3 +74,11 @@ La operación comercial conserva todos los datos en Supabase. Los cálculos se e
 
 La migración `database/06_clientes_historial_ticket.sql` añade clientes identificados, referencias de pago, tickets internos inmutables y búsqueda paginada. La aplicación reduce consultas repetidas y verifica Firebase una vez por ejecución. Consulta [la guía de instalación y alcance](docs/10_RENDIMIENTO_CLIENTES_Y_TICKETS.md). La confirmación de pago sigue siendo manual y el ticket PDF no sustituye una boleta electrónica SUNAT.
 
+# Actualización: fiados y espera de Yape
+
+Consulta [instalación y alcance](docs/12_FIADOS_Y_ESPERA_DE_PAGO.md) y
+[propuesta de migración a web propia](docs/13_MIGRACION_WEB_Y_ALOJAMIENTO.md).
+Las migraciones 06 a 09 añaden clientes, tickets, avisos, cuentas por cobrar y órdenes de cobro.
+Activa `CREDIT_ENABLED = true` para fiados; la espera requiere además configurar el lector Android.
+Un aviso detectado requiere revisión del abono antes de registrar la venta.
+

@@ -272,7 +272,10 @@ def import_page(repo,products,role):
 
 def activity_page(repo,role):
     hero("Actividad y trazabilidad", "Consulta movimientos, importaciones y pronósticos guardados.")
-    if role=="administrador": team_editor()
+    if role=="administrador":
+        team_editor()
+        from bodega.charge_wait import admin
+        admin(repo)
     names={"Movimientos":"bodega_movimientos","Ventas y pagos":"bodega_ventas","Lotes":"bodega_lotes","Pronósticos":"bodega_predicciones","Decisiones de reposición":"bodega_reposiciones"}
     if role=="administrador": names["Eventos de uso"]="bodega_eventos"
     selected=st.selectbox("Datos",list(names))
@@ -343,6 +346,9 @@ def main():
     elif page=="Registrar venta": sale_page(repo,products,role,sales)
     elif page=="Historial de ventas":
         from bodega.sales_history import render
+        render(repo,role,TODAY)
+    elif page=="Fiados":
+        from bodega.credit import render
         render(repo,role,TODAY)
     elif page=="Inventario": inventory_page(repo,products,role)
     elif page=="Reposición": replenish_page(repo,products,sales,role)
