@@ -1,0 +1,13 @@
+.env
+.streamlit/secrets.toml
+*service-account*.json
+*firebase-adminsdk*.json
+vinculo_receptor_PRIVADO.json
+*.keystore
+__pycache__/
+.pytest_cache/
+*.pyc
+.venv/
+.firebase/
+node_modules/
+*.log
