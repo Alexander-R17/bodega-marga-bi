@@ -98,3 +98,37 @@ def test_sale_sends_confirmed_amount_and_verified_actor(monkeypatch):
     assert captured["json"]["p_pago_confirmado"] is True
     assert captured["json"]["p_total_confirmado"]=="4.8"
     assert captured["json"]["p_usuario"]=="verified-cashier"
+
+
+def test_legacy_anon_key_is_rejected_before_any_request(monkeypatch):
+    import base64
+    payload=base64.urlsafe_b64encode(json.dumps({'role':'anon'}).encode()).decode().rstrip('=')
+    with pytest.raises(module.DataError,match='clave anon'):
+        make_repo(monkeypatch,'eyJhbGciOiJIUzI1NiJ9.'+payload+'.TEST_ONLY')
+
+
+def test_legacy_key_from_different_project_is_rejected(monkeypatch):
+    import base64
+    payload=base64.urlsafe_b64encode(json.dumps({'role':'service_role','ref':'otherproject'}).encode()).decode().rstrip('=')
+    with pytest.raises(module.DataError,match='proyectos distintos'):
+        make_repo(monkeypatch,'eyJhbGciOiJIUzI1NiJ9.'+payload+'.TEST_ONLY')
+
+
+def test_sql_privilege_error_is_distinguished_from_invalid_key(monkeypatch):
+    repo=make_repo(monkeypatch,'sb_secret_TEST_ONLY')
+    monkeypatch.setattr(repo.http,'request',lambda *args,**kwargs:response(401,{'code':'42501','message':'PRIVATE'}))
+    with pytest.raises(module.DataError,match='42501') as exc:
+        repo._request('POST','rpc/bodega_registrar_venta_caja')
+    assert '10_caja_yape_clientes.sql' in str(exc.value) and 'PRIVATE' not in str(exc.value)
+
+
+def test_notice_confirmation_uses_verified_cashier_without_manual_approval(monkeypatch):
+    repo=make_repo(monkeypatch,'sb_secret_TEST_ONLY')
+    monkeypatch.setattr(module,'require_role',lambda *roles:{'uid':'verified-cashier'})
+    captured={}
+    def request(method,path,**kwargs):
+        captured.update(path=path,**kwargs);return {'estado':'DETECTADO'}
+    monkeypatch.setattr(repo,'_request',request)
+    repo.confirm_charge_notice('test-operation')
+    assert captured['path']=='rpc/bodega_confirmar_cobro_aviso'
+    assert captured['json']=={'p_id':'test-operation','p_usuario':'verified-cashier'}

@@ -28,13 +28,13 @@ def test_register_sale_through_ui(app):
     app.session_state["shop_view"]="carrito"
     app.run()
     app.button(key="plus_checkout_1").click().run()
-    app.radio(key="sale_payment").set_value("Yape").run()
+    app.radio(key="sale_payment").set_value("Plin").run()
     app.text_input(key='payment_reference').set_value('TEST-001').run()
     app.checkbox(key="payment_received").check().run()
     next(b for b in app.button if b.label=="Confirmar venta").click().run()
     assert not app.exception and not app.error
     assert repo.products[0]["stock"]==before-2
-    assert repo.headers[-1]["medio_pago"]=="Yape"
+    assert repo.headers[-1]["medio_pago"]=="Plin"
     assert "pending_sale" not in app.session_state
     assert len(app.session_state["cart"])==0
 

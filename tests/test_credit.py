@@ -74,9 +74,9 @@ def test_credit_checkout_account_payment_and_bi_ui(monkeypatch):
     repo=app.session_state['demo_repo'];repo.configure_credit('12345678','Cliente prueba',100,True)
     app.radio(key='page').set_value('Registrar venta').run();app.button(key='add_1').click().run()
     app.session_state['shop_view']='carrito';app.run()
-    app.text_input(key='sale_customer_dni').set_value('12345678').run()
-    app.text_input(key='sale_customer_name').set_value('Cliente prueba').run()
     app.radio(key='sale_payment').set_value('Fiado').run()
+    assert not any(x.key in {'sale_customer_dni','sale_customer_name'} for x in app.text_input)
+    app.selectbox(key='sale_credit_account').select(1).run()
     app.checkbox(key='credit_authorized').check().run()
     next(b for b in app.button if b.label=='Registrar venta a fiado').click().run()
     assert not app.exception and not app.error
@@ -94,38 +94,40 @@ def test_credit_checkout_account_payment_and_bi_ui(monkeypatch):
     assert any(m.label=='Abonos recibidos · período' and '3.00' in str(m.value) for m in app.metric)
 
 
-def test_wait_dialog_detects_without_selling_until_review(monkeypatch):
+def test_wait_dialog_registers_only_after_server_notice_confirmation(monkeypatch):
     from pathlib import Path
+    from datetime import timezone
     from streamlit.testing.v1 import AppTest
     import bodega.charge_wait as wait
     root=Path(__file__).resolve().parents[1]
     monkeypatch.chdir(root);monkeypatch.setenv('APP_MODE','demo');monkeypatch.setattr(wait,'enabled',lambda:True)
-    device='11111111-1111-4111-8111-111111111111';state=['ESPERANDO'];order={}
-    monkeypatch.setattr(DemoRepository,'receivers',lambda self:[{'id':device,'nombre':'Receptor local','activo':True}],raising=False)
+    device='11111111-1111-4111-8111-111111111111';state=['ESPERANDO'];order={};calls=[]
+    monkeypatch.setattr(DemoRepository,'receivers',lambda self:[{'id':device,'nombre':'Receptor local','activo':True,
+        'ultimo_contacto':datetime.now(timezone.utc).isoformat()}],raising=False)
     def start(self,op,device,items,customer,total):
         order.update(id=op,items=items,customer=customer,total=total);return {'id':op}
     def status(self,op):return {'id':op,'estado':state[0],'importe_centimos':480,'segundos_restantes':90,'venta_id':None}
-    def finish(self,op,*,cancel=False,reference='',entity='',reviewed=False):
-        if cancel:return {'estado':'CANCELADO'}
-        assert reviewed
-        return self.sale(op,order['items'],'Yape',confirmed_total=order['total'],customer=order['customer'],reference=reference,entity=entity)
+    def confirm(self,op):
+        calls.append(op)
+        if len(calls)==1:return {'estado':'DETECTADO','segundos_confirmacion':3}
+        result=self.sale(op,order['items'],'Yape',confirmed_total=order['total'],customer=order['customer'],reference='AVISO-YAPE-1',entity='YAPE DEL NEGOCIO')
+        return {**result,'estado':'REGISTRADO'}
     monkeypatch.setattr(DemoRepository,'start_charge',start,raising=False)
     monkeypatch.setattr(DemoRepository,'charge_status',status,raising=False)
-    monkeypatch.setattr(DemoRepository,'finish_charge',finish,raising=False)
+    monkeypatch.setattr(DemoRepository,'confirm_charge_notice',confirm,raising=False)
     app=AppTest.from_file(root/'app.py',default_timeout=45).run()
     app.radio(key='page').set_value('Registrar venta').run();app.button(key='add_1').click().run()
     app.session_state['shop_view']='carrito';app.run();app.radio(key='sale_payment').set_value('Yape').run()
+    assert not any(t.label in {'Código de operación del pago','Entidad o cuenta receptora'} for t in app.text_input)
+    assert not any(c.key=='payment_received' for c in app.checkbox)
     repo=app.session_state['demo_repo'];before=len(repo.headers)
     app.button(key='charge_start').click().run()
-    assert not app.exception
-    assert 'active_charge' in app.session_state
+    assert not app.exception and 'active_charge' in app.session_state
     assert any('Tiempo restante:' in t.value for t in app.caption)
+    assert len(repo.headers)==before
     state[0]='DETECTADO';app.run()
     assert not app.exception and len(repo.headers)==before
-    commit=next(b for b in app.button if b.label=='Confirmar abono y registrar venta')
-    assert commit.disabled
-    next(t for t in app.text_input if t.label=='Código de operación del abono').set_value('UI-TEST-0001').run()
-    next(c for c in app.checkbox if c.label=='Revisé el movimiento y recibí el importe completo de este cliente').check().run()
-    next(b for b in app.button if b.label=='Confirmar abono y registrar venta').click().run()
+    app.run()
     assert not app.exception and len(repo.headers)==before+1
     assert 'active_charge' not in app.session_state and app.session_state['cart']==[]
+    assert any('Cobro registrado con éxito' in t.value for t in app.markdown)

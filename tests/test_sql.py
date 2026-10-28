@@ -36,7 +36,7 @@ def db():
     conn.execute((ROOT/"database/04_galeria_y_bi.sql").read_text())
     conn.execute((ROOT/"database/05_confirmacion_pago.sql").read_text())
     conn.execute((ROOT/"database/05_confirmacion_pago.sql").read_text())
-    for name in ['06_clientes_historial_ticket.sql','07_piloto_avisos_yape.sql','08_fiado.sql','09_espera_cobros.sql']:
+    for name in ['06_clientes_historial_ticket.sql','07_piloto_avisos_yape.sql','08_fiado.sql','09_espera_cobros.sql','10_caja_yape_clientes.sql']:
         conn.execute((ROOT/'database'/name).read_text())
         conn.execute((ROOT/'database'/name).read_text())
     conn.execute("TRUNCATE bodega_cobros,bodega_pago_avisos,bodega_pago_dispositivos,bodega_referencias_pago,bodega_fiado_cuentas,bodega_clientes,bodega_productos,bodega_categorias,bodega_proveedores,bodega_tiempo,bodega_ventas,bodega_detalle_venta,bodega_movimientos,bodega_operaciones,bodega_staging,bodega_lotes,bodega_predicciones,bodega_eventos,bodega_reposiciones RESTART IDENTITY CASCADE")
