@@ -1,0 +1,27 @@
+{
+  "checks": [
+    "migraciones 06 a 10 repetibles",
+    "fiado atómico: una venta, un descuento de stock, deuda sin pago ficticio",
+    "límite de crédito revierte venta y stock",
+    "abono parcial idempotente: reduce deuda sin duplicar ventas; ticket muestra saldo",
+    "rechaza sobrepago y anulación de venta con abonos activos",
+    "referencias únicas compartidas entre ventas y abonos",
+    "deuda vencida bloquea nuevas compras",
+    "BI distingue ventas a crédito, abonos y cartera sin datos personales",
+    "una espera por receptor y no utiliza avisos anteriores",
+    "aviso deduplicado detectado no confirma por sí solo una venta",
+    "dos avisos iguales producen ambigüedad y permiten cancelar",
+    "la espera vence sin crear venta",
+    "confirmación revisada y reintento generan una sola venta y ticket",
+    "selector privado busca clientes por nombre o DNI sin comodines inyectados",
+    "Yape automático espera el margen, confirma una vez y conserva evidencia sin inventar código bancario",
+    "no registra automáticamente avisos retrasados por conexión ni órdenes de otro cajero",
+    "dos avisos iguales bloquean el registro automático",
+    "sin stock al terminar se revierte la venta y se conserva la orden para conciliar",
+    "el servidor rechaza un DNI con letras y un celular que nunca se conectó",
+    "diagnóstico real del rol de servidor sin escrituras ni claves",
+    "revocación y acceso privado de cuentas, avisos y cobros"
+  ],
+  "entorno": "PGlite local",
+  "produccion_modificada": false
+}

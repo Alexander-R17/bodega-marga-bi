@@ -1,0 +1,25 @@
+{
+  "archivo": "Bodega_Marga_Avisos_Android_v0_2.apk",
+  "bytes": 45529,
+  "sha256": "7234549aa6efbacbdf5adb019fd36a5e7c1ac0180018fcf72caec1f9a88a447d",
+  "compile_sdk": 35,
+  "target_sdk": 35,
+  "min_sdk": 28,
+  "version": "0.2-piloto",
+  "fuentes_java": {
+    "app/src/main/java/pe/bodegamarga/avisos/BootReceiver.java": "37dee7996c5901009cc53a63e6f6ae3569e6b0b491056f513f475bf51c15e1fc",
+    "app/src/main/java/pe/bodegamarga/avisos/Config.java": "1b01393049122dda214f03673b17528d20b33e87a4d5204516e1ca0cfb950610",
+    "app/src/main/java/pe/bodegamarga/avisos/MainActivity.java": "14d185532b049ab3478a962a659c5bcde199140b648f3c931946c471eb53a82e",
+    "app/src/main/java/pe/bodegamarga/avisos/PaymentParser.java": "381883e6d90687894eb295dccc31cabf04858d511d7dd1be0e100868802f150e",
+    "app/src/main/java/pe/bodegamarga/avisos/QueueDb.java": "be1c7a8f763a907781d0c1afed292ddf000498f4f409c3941de93d24327b7005",
+    "app/src/main/java/pe/bodegamarga/avisos/UploadJob.java": "da818c212d18f1850cd967db39b69ed4332d3ddb9862860203d9fbba965d309f",
+    "app/src/main/java/pe/bodegamarga/avisos/Uploader.java": "5e585d5de19b2696ca6ff2db424806665ac89ff0940fd909e850d4b29ee22fd1",
+    "app/src/main/java/pe/bodegamarga/avisos/YapeListener.java": "23012b034410215803e3d6c8a0bd8479d90ae8b6e6de516138f8d260d7a5c413"
+  },
+  "firma_verificada": true,
+  "probado_en_telefono_fisico": false,
+  "fecha": "2026-10-25",
+  "parser_comprobaciones_sinteticas": 21,
+  "pruebas_contrato_https": 3,
+  "configuracion_real_de_usuario_probada": false
+}

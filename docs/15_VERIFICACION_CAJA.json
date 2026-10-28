@@ -1,0 +1,22 @@
+{
+  "fecha": "2026-10-27",
+  "python": {
+    "passed": 97,
+    "skipped": 9,
+    "motivo_skip": "Integración PostgreSQL nativa sin TEST_DATABASE_URL local; nunca se conecta a Supabase para pruebas."
+  },
+  "sql_local": {
+    "passed": 21,
+    "entorno": "PGlite",
+    "repetibilidad_migraciones": true
+  },
+  "edge_function": {
+    "passed": 3,
+    "entorno": "Node local con HTTP simulado"
+  },
+  "ui": "AppTest: espera sin venta, detección con margen, registro único y animación; clientes, fiado y DNI inválido.",
+  "TOML_ejemplo_valido": true,
+  "produccion_modificada": false,
+  "prueba_fisica_S23_Ultra": "pendiente",
+  "nota": "No se afirma prueba visual de navegador ni verificación bancaria."
+}
