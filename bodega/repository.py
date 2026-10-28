@@ -3,6 +3,7 @@ import pandas as pd
 import time
 import base64
 import json
+import re
 from bodega.config import setting
 from bodega.auth import require_identity, require_role
 
@@ -57,6 +58,10 @@ class CloudRepository:
             except (ValueError,AttributeError):code=''
             if r.status_code in {401,403} and code=='42501':
                 raise DataError('Supabase rechazó permisos SQL (42501). Comprueba que la clave sea de servidor y ejecuta database/10_caja_yape_clientes.sql: restaura permisos solo para service_role sin abrir acceso público.')
+            if code=='42702' and path in {'rpc/bodega_registrar_venta_caja','rpc/bodega_confirmar_cobro_aviso','rpc/bodega_conciliar_cobro_recibido'}:
+                raise DataError('Conflicto SQL al guardar datos del cliente (42702). Ejecuta database/11_correccion_clientes_y_conciliacion.sql. El aviso recibido se conserva; no vuelvas a cobrar.')
+            if r.status_code==404 and path in {'rpc/bodega_cobros_por_conciliar','rpc/bodega_conciliar_cobro_recibido'}:
+                raise DataError('Ejecuta database/11_correccion_clientes_y_conciliacion.sql para recuperar cobros recibidos pendientes de registro.')
             if r.status_code == 401:
                 raise DataError("Supabase no autorizó el acceso (401). Comprueba en Secrets que SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY sean del mismo proyecto. Usa una clave secreta sb_secret_... o legacy service_role, vigente y completa; las claves anon y sb_publishable_... no dan acceso a esta aplicación.")
             if r.status_code == 403:
@@ -94,9 +99,14 @@ class CloudRepository:
                      'El receptor ya tiene un cobro pendiente','Receptor no autorizado','Cobro no encontrado',
                      'El cobro requiere revisión','Comprueba el abono antes de registrar','La venta ya fue registrada',
                      'El celular receptor no tiene una conexión reciente','El aviso requiere conciliación',
-                     'La orden no tiene un aviso único','Cobro inválido')
+                     'La orden no tiene un aviso único','Cobro inválido',
+                     'Revisa el movimiento recibido antes de conciliar','La orden no tiene un aviso recibido para conciliar',
+                     'El aviso no cumple las condiciones de la orden original','El aviso ya está asociado a otra orden',
+                     'Hay varios avisos para esta orden; requiere revisión adicional')
             friendly = next((m for m in known if m in msg), None)
-            raise DataError(friendly or f"Supabase rechazó la operación ({r.status_code}). Revisa esquema, permisos y formato.", confirmed_rejected=r.status_code<500)
+            safe_code=code if isinstance(code,str) and re.fullmatch(r'[A-Z0-9]{5,12}',code) else ''
+            suffix=f' · código {safe_code}' if safe_code else ''
+            raise DataError(friendly or f"Supabase rechazó la operación ({r.status_code}{suffix}). Revisa esquema, permisos y formato.", confirmed_rejected=r.status_code<500)
         self.timings.append({"operacion": method+" "+path, "ms": round((time.monotonic()-started)*1000,1)})
         self.timings = self.timings[-40:]
         return r.json() if r.content else None
@@ -234,6 +244,14 @@ class CloudRepository:
 
     def confirm_charge_notice(self, op):
         return self.rpc('bodega_confirmar_cobro_aviso',{'p_id':op},('administrador','cajero'))
+
+    def pending_received_charges(self):
+        identity=require_role('administrador')
+        return self._request('POST','rpc/bodega_cobros_por_conciliar',json={'p_usuario':identity['uid']})
+
+    def reconcile_received_charge(self, op, reviewed=False):
+        if reviewed is not True:raise DataError('Revisa el movimiento recibido antes de conciliar')
+        return self.rpc('bodega_conciliar_cobro_recibido',{'p_id':op,'p_revisado':True})
 
     def charge_status(self, op):
         identity=require_role('administrador','cajero')

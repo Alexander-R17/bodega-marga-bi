@@ -60,6 +60,8 @@ def _dialog(repo):
             st.write('No se registrará automáticamente. Revisa los movimientos en el Yape del negocio y concilia el cobro antes de entregar los productos.')
         elif state in {'VENCIDO','CANCELADO'}:
             st.warning('La espera terminó. No se registró una venta con esta orden.')
+            if status.get('aviso_id'):
+                st.info('El aviso recibido sigue guardado. Entra como administrador en Actividad → Cobros recibidos pendientes de registro para revisar y recuperar esta venta.')
             st.caption('Si el cliente ya pagó, revisa el abono y concilia el cobro con el administrador. No solicites un segundo pago.')
         if state!='REGISTRADO' and st.button('Cerrar y volver al carrito',key='charge_cancel_'+op):
             try:
@@ -131,6 +133,7 @@ def success_animation():
 
 def admin(repo):
     if not enabled() or not hasattr(repo,'pair_receiver'):return
+    reconciliation_admin(repo)
     with st.expander('Vincular celular receptor para Yape'):
         st.caption('Requiere SQL 07/09/10, la Edge Function recibir-aviso-yape y el APK del piloto Android.')
         name=st.text_input('Nombre del celular',value='S23 Ultra · caja',max_chars=60)
@@ -156,6 +159,45 @@ def admin(repo):
                 if st.button('Revocar vínculo del receptor'):
                     repo.revoke_receiver(selected);st.session_state.pop('charge_admin_devices',None)
                     st.session_state.pop('charge_devices',None);st.success('Vínculo revocado.')
+
+
+def reconciliation_admin(repo):
+    if not hasattr(repo,'pending_received_charges'):return
+    with st.expander('Cobros recibidos pendientes de registro'):
+        st.caption('Para órdenes propias con un aviso ya asociado. Revisa el movimiento del Yape receptor antes de recuperar una venta; no solicites otro pago.')
+        if st.button('Consultar cobros pendientes',key='received_charges_refresh'):
+            st.session_state['received_charge_list']=repo.pending_received_charges()
+        pending=st.session_state.get('received_charge_list',[])
+        if not pending:
+            st.info('Pulsa Consultar cobros pendientes. Solo aparecen órdenes con un aviso guardado y sin venta registrada.')
+            return
+        choices={c['id']:c for c in pending}
+        if st.session_state.get('received_charge_selected') not in choices:
+            st.session_state.pop('received_charge_selected',None)
+        selected=st.selectbox('Orden recibida para recuperar',list(choices),key='received_charge_selected',
+            format_func=lambda k:'CO-'+k[:8].upper()+f" · S/ {choices[k]['importe_centimos']/100:.2f} · "+choices[k]['cliente'])
+        charge=choices[selected]
+        st.write(f"**Cliente:** {charge['cliente']}")
+        st.caption('Orden creada: '+str(charge['creado_en'])+' · Estado: '+charge['estado'])
+        reviewed=st.checkbox('Comprobé el movimiento en Yape y corresponde al importe y al cliente de esta orden',
+            key='received_charge_review_'+selected)
+        if st.button('Recuperar venta con el aviso recibido',type='primary',disabled=not reviewed,key='received_charge_commit'):
+            try:result=repo.reconcile_received_charge(selected,reviewed=True)
+            except DataError as exc:
+                st.error(str(exc));st.caption('La orden y el aviso se conservan. Reintenta esta misma recuperación después de revisar el error, sin cobrar de nuevo.')
+                return
+            st.session_state['last_sale_receipt']={**result,'payment':'Yape'}
+            # Limpiar únicamente el carrito de la operación recuperada.
+            same_order=st.session_state.get('active_charge',{}).get('id')==selected
+            if same_order:
+                st.session_state.pop('active_charge',None);st.session_state['cart']=[]
+                st.session_state['reset_payment_confirmation']=True
+            st.session_state.pop('received_charge_list',None)
+            st.success('Venta '+result['orden']+' recuperada. Se utilizó el aviso existente; no se recibió ni solicitó otro pago.')
+            if not same_order and st.session_state.get('cart'):
+                st.info('Revisa el carrito antes de continuar. Si aún contiene los productos de esta venta recuperada, vacíalo para evitar registrarla otra vez.')
+            from bodega.receipts import receipt_panel
+            receipt_panel(repo,result['venta_id'])
 
 
 def diagnostics(repo):
