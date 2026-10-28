@@ -45,6 +45,15 @@ class DemoRepository(CreditDemo):
     def clear_cache(self):
         pass
 
+    def search_customers(self,query=''):
+        self._credit_init();customers={}
+        for h in self.headers:
+            if h.get('cliente_dni'):
+                customers[h['cliente_dni']]={'dni':h['cliente_dni'],'nombre':h['cliente_nombre']}
+        for a in self.credit_accounts:customers[a['dni']]={'dni':a['dni'],'nombre':a['nombre']}
+        return [dict(c,id=dni) for dni,c in sorted(customers.items(),key=lambda pair:pair[1]['nombre'])
+                if query.casefold() in (dni+' '+c['nombre']).casefold()][:75]
+
     def recent_table(self,name,limit=250):
         data=self.table(name)
         return data.tail(limit).iloc[::-1].copy()

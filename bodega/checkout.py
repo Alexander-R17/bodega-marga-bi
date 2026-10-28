@@ -9,7 +9,8 @@ def customer_data(customer=None):
         raise DataError("Datos del cliente inválidos.")
     dni=str(customer.get("dni","") or "").strip()
     name=" ".join(str(customer.get("nombre","") or "").split())
-    if (dni and (not re.fullmatch(r"[0-9]{8}",dni) or not name)) or (name and not 2<=len(name)<=120):
+    if (dni and (not re.fullmatch(r"[0-9]{8}",dni) or not name)) or (name and (not 2<=len(name)<=120
+        or sum(c.isalpha() for c in name)<2 or any(not(c.isalpha() or c in " .'-’") for c in name))):
         raise DataError("Datos del cliente inválidos: usa un DNI de 8 dígitos y su nombre, o deja ambos vacíos.")
     return {"dni":dni,"nombre":name}
 

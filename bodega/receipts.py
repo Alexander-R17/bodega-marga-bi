@@ -43,10 +43,13 @@ def receipt_pdf(data):
         para(f"Descuento: {money(data['descuento'])}"),para(f"TOTAL: {money(data['total'])}",title),
         para(f"Medio de pago: {data['medio_pago']}")])
     if data.get('pago_referencia'):
-        flow.extend([para(f"Entidad: {data.get('pago_entidad','')}"),para(f"Operación: {data['pago_referencia']}")])
+        label='Referencia interna del aviso' if data.get('pago_validacion')=='AVISO_DISPOSITIVO' else 'Operación'
+        flow.extend([para(f"Entidad: {data.get('pago_entidad','')}"),para(f"{label}: {data['pago_referencia']}")])
     if data.get('medio_pago')=='Fiado':
         flow.extend([para('VENTA A FIADO · CUENTA POR COBRAR',small),para(f"Vencimiento: {data.get('fiado_vencimiento','Por consultar')}",small),
                      para(f"Abonado: {money(data.get('fiado_abonado',0))} · Pendiente: {money(data.get('fiado_saldo',data['total']))}",small)])
+    elif data.get('pago_validacion')=='AVISO_DISPOSITIVO':
+        flow.append(para('Cobro registrado a partir del aviso del celular receptor. No constituye una verificación bancaria.',small))
     else:
         flow.append(para('Pago confirmado manualmente en caja.' if data.get('pago_confirmado_en') else 'Sin verificación de pago registrada.',small))
     if data.get('origen')=='HISTORICO': flow.append(para('Venta procedente del historial importado.',small))

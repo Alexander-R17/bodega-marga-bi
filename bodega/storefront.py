@@ -348,6 +348,7 @@ def checkout_page(repo, products, role, finish, notify):
     st.button("← Seguir agregando productos", on_click=open_catalog)
     receipt = st.session_state.get("last_sale_receipt")
     if receipt and not _cart():
+        if st.session_state.pop('show_yape_success',False):charge_wait.success_animation()
         st.markdown(f'<section class="receipt"><strong>Venta {receipt["venta_id"]} registrada</strong><p>{soles(receipt["total"])} · {html.escape(receipt["payment"])} · Consulta el resultado en BI o en actividad.</p></section>', unsafe_allow_html=True)
         from bodega.receipts import receipt_panel
         receipt_panel(repo,receipt['venta_id'])
@@ -365,16 +366,18 @@ def checkout_page(repo, products, role, finish, notify):
         st.info("Tu carrito está vacío. Elige productos para registrar la siguiente venta.")
         return
     left, right = st.columns([1.8, 1], gap="large")
+    selected_payment=st.session_state.get('sale_payment','Efectivo')
+    account=None
     with left:
         st.subheader('Cliente de la venta')
-        a,b=st.columns([1,2])
-        dni=a.text_input('DNI del cliente (opcional)',max_chars=8,key='sale_customer_dni')
-        name=b.text_input('Nombre del cliente (opcional)',max_chars=120,key='sale_customer_name')
-        st.caption('Puedes vender a Consumidor final dejando ambos campos vacíos. Si registras DNI, completa también el nombre.')
-        from bodega.checkout import customer_data,payment_data
-        customer={'dni':dni,'nombre':name}; customer_valid=True
-        try: customer=customer_data(customer)
-        except DataError as exc: st.error(str(exc));customer_valid=False
+        from bodega.checkout import payment_data
+        if selected_payment=='Fiado':
+            account=credit.choose_account(repo)
+            customer={'dni':account['dni'],'nombre':account['nombre']} if account else {}
+            customer_valid=account is not None
+        else:
+            from bodega.customers import checkout_customer
+            customer,customer_valid=checkout_customer(repo)
         st.subheader("Artículos de la venta")
         for line in rows:
             product = rules.product_row(products, line["producto_id"])
@@ -400,7 +403,7 @@ def checkout_page(repo, products, role, finish, notify):
         with st.container(key="order_summary"):
             st.subheader("Resumen de la venta")
             amount = _summary(rows)
-            st.markdown('<p class="checkout-label">Medio de pago recibido</p>', unsafe_allow_html=True)
+            st.markdown('<p class="checkout-label">Medio de pago</p>', unsafe_allow_html=True)
             with st.container(key="payment_methods"):
                 payment = st.radio("Medio de pago", PAYMENTS+(['Fiado'] if credit.enabled() else []), horizontal=True, label_visibility="collapsed", key="sale_payment")
             if st.session_state.get('checkout_payment_method')!=payment:
@@ -408,7 +411,10 @@ def checkout_page(repo, products, role, finish, notify):
                 st.session_state['payment_received']=False
                 st.session_state['checkout_payment_method']=payment
             if payment=='Fiado':
-                if customer_valid:credit.checkout(repo,rows,amount['total'],customer,_cart(),finish,notify)
+                credit.checkout(repo,rows,amount['total'],account,_cart(),finish,notify)
+                return
+            if payment=='Yape':
+                charge_wait.checkout(repo,_cart(),customer,amount['total'],customer_valid and all(x['activo'] and x['cantidad']<=x['stock'] for x in rows))
                 return
             reference=entity='';payment_valid=True
             if payment!='Efectivo':
@@ -435,7 +441,6 @@ def checkout_page(repo, products, role, finish, notify):
                 "Tarjeta": "Comprueba que el POS indique pago aprobado por el importe completo.",
                 "Transferencia": "Comprueba el abono en la cuenta del negocio antes de confirmar."}
             st.caption(instructions[payment])
-            if payment=='Yape':charge_wait.checkout(repo,_cart(),customer,amount['total'],customer_valid and all(x['activo'] and x['cantidad']<=x['stock'] for x in rows))
             received = st.checkbox(f'Confirmo que recibí {soles(amount["total"])} por {payment}',
                 key="payment_received", disabled=not valid)
             if st.button("Confirmar venta", type="primary", width="stretch", disabled=not received or not valid):

@@ -1,6 +1,8 @@
 import requests
 import pandas as pd
 import time
+import base64
+import json
 from bodega.config import setting
 from bodega.auth import require_identity, require_role
 
@@ -21,6 +23,17 @@ class CloudRepository:
             raise DataError("La conexión necesita una clave secreta de Supabase (sb_secret_...) o legacy service_role. Sustituye la clave pública en SUPABASE_SERVICE_ROLE_KEY dentro de Secrets.")
         if any(char.isspace() for char in self.key):
             raise DataError("Copia la clave de Supabase completa en una sola línea, sin espacios, dentro de SUPABASE_SERVICE_ROLE_KEY.")
+        if self.key.startswith('eyJ'):
+            try:
+                raw=self.key.split('.')[1]
+                claims=json.loads(base64.urlsafe_b64decode(raw+'='*(-len(raw)%4)))
+            except (ValueError,IndexError,UnicodeError):
+                raise DataError('La clave legacy de Supabase está incompleta. Copia la clave service_role completa en Secrets.') from None
+            # Solo diagnóstico local: Supabase verifica firma y vigencia en cada solicitud.
+            if claims.get('role')!='service_role':
+                raise DataError('SUPABASE_SERVICE_ROLE_KEY contiene una clave anon o de usuario. Utiliza una clave secreta sb_secret_... o legacy service_role del mismo proyecto.')
+            if claims.get('ref') and self.url!='https://'+str(claims['ref'])+'.supabase.co':
+                raise DataError('La URL de Supabase y la clave legacy pertenecen a proyectos distintos. Revisa ambos valores en Secrets.')
         self.http = requests.Session()
         self._cache = {}
         self.timings = []
@@ -40,6 +53,10 @@ class CloudRepository:
         except requests.RequestException:
             raise DataError("No se recibió confirmación de Supabase. Reintenta la misma operación; conserva su identificador.", confirmed_rejected=False) from None
         if not r.ok:
+            try:code=r.json().get('code','')
+            except (ValueError,AttributeError):code=''
+            if r.status_code in {401,403} and code=='42501':
+                raise DataError('Supabase rechazó permisos SQL (42501). Comprueba que la clave sea de servidor y ejecuta database/10_caja_yape_clientes.sql: restaura permisos solo para service_role sin abrir acceso público.')
             if r.status_code == 401:
                 raise DataError("Supabase no autorizó el acceso (401). Comprueba en Secrets que SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY sean del mismo proyecto. Usa una clave secreta sb_secret_... o legacy service_role, vigente y completa; las claves anon y sb_publishable_... no dan acceso a esta aplicación.")
             if r.status_code == 403:
@@ -54,6 +71,8 @@ class CloudRepository:
                 raise DataError('Ejecuta database/08_fiado.sql en Supabase para activar las cuentas de fiado.')
             if r.status_code==404 and any(path.startswith('rpc/'+prefix) for prefix in ('bodega_abrir_cobro','bodega_estado_cobro','bodega_finalizar_cobro','bodega_consultar_avisos','bodega_vincular_receptor','bodega_revocar_receptor')):
                 raise DataError('Ejecuta las migraciones 07 y 09 y despliega recibir-aviso-yape para activar la espera de pago.')
+            if r.status_code==404 and path in {'rpc/bodega_confirmar_cobro_aviso','rpc/bodega_buscar_clientes','rpc/bodega_diagnostico_caja'}:
+                raise DataError('Ejecuta database/10_caja_yape_clientes.sql en Supabase para actualizar la caja.')
             if path == "rpc/bodega_guardar_producto_catalogo" and r.status_code == 404:
                 raise DataError("Ejecuta database/03_catalogo_visual.sql en Supabase para guardar las fotos y fichas del catálogo.")
             try:
@@ -73,7 +92,9 @@ class CloudRepository:
                      'Abono de fiado inválido','El abono supera la deuda pendiente','La venta está anulada',
                      'Anula primero los abonos del fiado y concilia la devolución','Abono no encontrado',
                      'El receptor ya tiene un cobro pendiente','Receptor no autorizado','Cobro no encontrado',
-                     'El cobro requiere revisión','Comprueba el abono antes de registrar','La venta ya fue registrada')
+                     'El cobro requiere revisión','Comprueba el abono antes de registrar','La venta ya fue registrada',
+                     'El celular receptor no tiene una conexión reciente','El aviso requiere conciliación',
+                     'La orden no tiene un aviso único','Cobro inválido')
             friendly = next((m for m in known if m in msg), None)
             raise DataError(friendly or f"Supabase rechazó la operación ({r.status_code}). Revisa esquema, permisos y formato.", confirmed_rejected=r.status_code<500)
         self.timings.append({"operacion": method+" "+path, "ms": round((time.monotonic()-started)*1000,1)})
@@ -161,6 +182,19 @@ class CloudRepository:
         return self._request('POST','rpc/bodega_consultar_fiado',json={'p_busqueda':str(query)[:120],
             'p_cuenta':int(account) if account is not None else None,'p_usuario':identity['uid']})
 
+    def search_customers(self, query=''):
+        identity=require_role('administrador','cajero')
+        cache_key=('clientes',str(query)[:120]);cached=self._cache.get(cache_key)
+        if cached and time.monotonic()-cached[0]<15:return [dict(c) for c in cached[1]]
+        rows=self._request('POST','rpc/bodega_buscar_clientes',json={'p_busqueda':str(query)[:120],'p_usuario':identity['uid']})
+        if len(self._cache)>=12:self._cache.pop(next(iter(self._cache)))
+        self._cache[cache_key]=(time.monotonic(),rows)
+        return [dict(c) for c in rows]
+
+    def diagnose_checkout(self):
+        identity=require_role('administrador')
+        return self._request('POST','rpc/bodega_diagnostico_caja',json={'p_usuario':identity['uid']})
+
     def credit_summary(self, since, until):
         identity=require_role('administrador','cajero','analista')
         return self._request('POST','rpc/bodega_resumen_fiado',json={'p_desde':str(since),'p_hasta':str(until),'p_usuario':identity['uid']})
@@ -193,8 +227,13 @@ class CloudRepository:
         return self.rpc('bodega_revocar_receptor',{'p_id':device})
 
     def start_charge(self, op, device, items, customer, total):
+        from bodega.checkout import customer_data
+        customer=customer_data(customer)
         return self.rpc('bodega_abrir_cobro',{'p_id':op,'p_dispositivo':device,'p_items':items,'p_cliente':customer,
             'p_total':str(total)},('administrador','cajero'))
+
+    def confirm_charge_notice(self, op):
+        return self.rpc('bodega_confirmar_cobro_aviso',{'p_id':op},('administrador','cajero'))
 
     def charge_status(self, op):
         identity=require_role('administrador','cajero')

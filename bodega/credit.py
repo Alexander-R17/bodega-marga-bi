@@ -47,13 +47,25 @@ def pending_checkout(repo,finish,notify):
     return True
 
 
-def checkout(repo,rows,total,customer,items,finish,notify):
+def choose_account(repo):
+    query=st.text_input('Buscar cuenta de fiado por nombre o DNI',max_chars=120,key='sale_credit_search',autocomplete='off')
+    accounts=repo.credit_overview(query=query)['cuentas']
+    if not accounts:
+        st.info('No hay cuentas de fiado con esa búsqueda. El administrador puede crearlas en Fiados.')
+        return None
+    labels={x['id']:f"{x['nombre']} · DNI {x['dni']}"+(' · Bloqueada' if not x['activo'] else '') for x in accounts}
+    if st.session_state.get('sale_credit_account') not in labels:
+        st.session_state['sale_credit_account']=None
+    selected=st.selectbox('Cliente con cuenta de fiado',list(labels),index=None,
+        placeholder='Selecciona al titular de la cuenta',format_func=labels.get,key='sale_credit_account')
+    st.caption('Solo se utilizan cuentas creadas en Fiados. El nombre y DNI se completan desde su ficha.')
+    return next((x for x in accounts if x['id']==selected),None)
+
+
+def checkout(repo,rows,total,account,items,finish,notify):
     if not enabled():st.info('Activa CREDIT_ENABLED después de ejecutar SQL 08.');return
-    dni=customer.get('dni','')
-    if not re.fullmatch('[0-9]{8}',dni):st.info('Completa el DNI y el nombre del cliente para consultar su cuenta de fiado.');return
-    data=repo.credit_overview(query=dni)
-    account=next((x for x in data['cuentas'] if x['dni']==dni),None)
-    if not account:st.info('El administrador debe habilitar primero esta cuenta en Fiados.');return
+    if not account:st.info('Selecciona un cliente con cuenta de fiado para continuar.');return
+    customer=customer_data({'dni':account['dni'],'nombre':account['nombre']})
     balance=Decimal(str(account['saldo']));available=Decimal(str(account['limite']))-balance
     st.write(f"**Cuenta: {account['nombre']}**")
     st.caption(f"Deuda actual: S/ {balance:.2f} · Disponible: S/ {max(available,Decimal(0)):.2f}")
@@ -79,7 +91,8 @@ def render(repo,role,today):
     if role=='administrador':
         with st.expander('Habilitar cliente o cambiar su límite'):
             with st.form('credit_account_form',clear_on_submit=True):
-                dni=st.text_input('DNI de la cuenta',max_chars=8);name=st.text_input('Nombre del titular',max_chars=120)
+                from bodega.customers import dni_input
+                dni=dni_input('DNI de la cuenta',key='credit_account_dni');name=st.text_input('Nombre del titular',max_chars=120)
                 limit=st.number_input('Límite total de fiado S/',min_value=0.,max_value=1000000.,value=100.,step=10.)
                 active=st.checkbox('Habilitar nuevas compras',value=True)
                 submit=st.form_submit_button('Guardar cuenta')
