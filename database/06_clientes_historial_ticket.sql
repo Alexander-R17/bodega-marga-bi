@@ -46,29 +46,29 @@ end $migration$;
 create or replace function public.bodega_registrar_venta_caja(p_operacion uuid,p_items jsonb,p_pago text,p_usuario text,
  p_pago_confirmado boolean,p_total_confirmado numeric,p_cliente jsonb,p_referencia text,p_entidad text)
 returns jsonb language plpgsql security definer set search_path=public,pg_temp as $$
-declare r jsonb; v bodega_ventas; cli bigint; dni text; nombre text; ref text; entidad text; payload jsonb;
+declare r jsonb; v bodega_ventas; v_cli bigint; v_dni text; v_nombre text; v_ref text; v_entidad text; v_payload jsonb;
 begin
- dni=trim(coalesce(p_cliente->>'dni',''));nombre=regexp_replace(trim(coalesce(p_cliente->>'nombre','')),'\s+',' ','g');
- if jsonb_typeof(p_cliente) is distinct from 'object' or (dni<>'' and (dni !~ '^[0-9]{8}$' or nombre=''))
- or (nombre<>'' and length(nombre) not between 2 and 120) then raise exception 'Datos del cliente inválidos';end if;
+ v_dni=trim(coalesce(p_cliente->>'dni',''));v_nombre=regexp_replace(trim(coalesce(p_cliente->>'nombre','')),'\s+',' ','g');
+ if jsonb_typeof(p_cliente) is distinct from 'object' or (v_dni<>'' and (v_dni !~ '^[0-9]{8}$' or v_nombre=''))
+ or (v_nombre<>'' and length(v_nombre) not between 2 and 120) then raise exception 'Datos del cliente inválidos';end if;
  if p_pago is null or p_pago not in ('Efectivo','Yape','Plin','Tarjeta','Transferencia') then raise exception 'Medio de pago inválido';end if;
- ref=upper(trim(coalesce(p_referencia,'')));entidad=upper(regexp_replace(trim(coalesce(p_entidad,'')),'\s+',' ','g'));
- if p_pago='Efectivo' then ref='';entidad='';
- elsif ref !~ '^[A-Z0-9._/-]{4,100}$' or length(entidad) not between 1 and 60 then raise exception 'Referencia de pago requerida';end if;
- payload=jsonb_build_object('dni',dni,'nombre',nombre,'referencia',ref,'entidad',entidad);
+ v_ref=upper(trim(coalesce(p_referencia,'')));v_entidad=upper(regexp_replace(trim(coalesce(p_entidad,'')),'\s+',' ','g'));
+ if p_pago='Efectivo' then v_ref='';v_entidad='';
+ elsif v_ref !~ '^[A-Z0-9._/-]{4,100}$' or length(v_entidad) not between 1 and 60 then raise exception 'Referencia de pago requerida';end if;
+ v_payload=jsonb_build_object('dni',v_dni,'nombre',v_nombre,'referencia',v_ref,'entidad',v_entidad);
  r=bodega_registrar_venta_pagada(p_operacion,p_items,p_pago,p_usuario,p_pago_confirmado,p_total_confirmado);
  select * into v from bodega_ventas where id=(r->>'venta_id')::bigint for update;
  if v.caja_payload is not null then
-  if v.caja_payload<>payload then raise exception 'Datos de caja cambiaron';end if;
+  if v.caja_payload<>v_payload then raise exception 'Datos de caja cambiaron';end if;
   return r||jsonb_build_object('orden',bodega_numero_orden(v.id));
  end if;
- if dni<>'' then
-  insert into bodega_clientes(dni,nombre) values(dni,nombre)
-  on conflict(dni) do update set nombre=excluded.nombre,actualizado_en=now() returning id into cli;
+ if v_dni<>'' then
+  insert into bodega_clientes(dni,nombre) values(v_dni,v_nombre)
+  on conflict(dni) do update set nombre=excluded.nombre,actualizado_en=now() returning id into v_cli;
  end if;
  begin
-  update bodega_ventas set cliente_id=cli,cliente_dni=nullif(dni,''),cliente_nombre=nullif(nombre,''),
-   pago_referencia=nullif(ref,''),pago_entidad=nullif(entidad,''),pago_validacion='MANUAL_CAJA',caja_payload=payload where id=v.id;
+  update bodega_ventas set cliente_id=v_cli,cliente_dni=nullif(v_dni,''),cliente_nombre=nullif(v_nombre,''),
+   pago_referencia=nullif(v_ref,''),pago_entidad=nullif(v_entidad,''),pago_validacion='MANUAL_CAJA',caja_payload=v_payload where id=v.id;
  exception when unique_violation then raise exception 'Referencia de pago ya utilizada';end;
  insert into bodega_tickets(venta_id,datos) values(v.id,bodega_datos_ticket(v.id)) on conflict do nothing;
  return r||jsonb_build_object('orden',bodega_numero_orden(v.id));
