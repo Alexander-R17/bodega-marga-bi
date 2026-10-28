@@ -274,7 +274,8 @@ def activity_page(repo,role):
     hero("Actividad y trazabilidad", "Consulta movimientos, importaciones y pronósticos guardados.")
     if role=="administrador":
         team_editor()
-        from bodega.charge_wait import admin
+        from bodega.charge_wait import admin,diagnostics
+        diagnostics(repo)
         admin(repo)
     names={"Movimientos":"bodega_movimientos","Ventas y pagos":"bodega_ventas","Lotes":"bodega_lotes","Pronósticos":"bodega_predicciones","Decisiones de reposición":"bodega_reposiciones"}
     if role=="administrador": names["Eventos de uso"]="bodega_eventos"
@@ -288,7 +289,7 @@ def activity_page(repo,role):
         export_button(data,selected.lower().replace(" ","_")+".csv")
         st.caption("Los nombres y roles reflejan el directorio actual. Si aparece «Usuario sin nombre», asígnalo en Equipo y nombres. La auditoría conserva el identificador original.")
     with st.expander("Cómo se calculan los indicadores"):
-        st.write("Ventas netas: suma de importes de líneas de ventas completadas. Ticket promedio: ventas / tickets únicos. Velocidad: unidades realizadas / días calendario. Stock: entradas y ajustes menos ventas y mermas, más anulaciones POS. Las devoluciones parciales, cuentas por cobrar e impuestos están fuera del MVP.")
+        st.write("Ventas netas: suma de importes de líneas de ventas completadas. Ticket promedio: ventas / tickets únicos. Velocidad: unidades realizadas / días calendario. Stock: entradas y ajustes menos ventas y mermas, más anulaciones POS. Fiados distingue ventas a crédito, abonos y deuda pendiente. Las devoluciones parciales y la emisión tributaria requieren un desarrollo adicional.")
 
 
 def main():

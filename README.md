@@ -7,7 +7,7 @@ La aplicación principal está en **`app.py`**. Funciona con Python y Streamlit;
 ## Qué incluye
 
 - Interfaz inspirada en las capturas Wix: menú superior, catálogo ilustrado con filtros, ficha de producto, carrito lateral y caja interna.
-- BI en seis páginas: resumen, ventas/rentabilidad, diagnóstico/inventario, cubo OLAP, predicciones y almacén/uso.
+- BI en siete páginas: resumen, ventas/rentabilidad, diagnóstico/inventario, cubo OLAP, predicciones, almacén/uso y fiados/cobranza.
 - OLAP con Slice, Dice, Drill-down, Roll-up, Pivot y cubo con subtotales; filtros de fechas, año, mes, producto, categoría, proveedor, pago y origen.
 - Galería de hasta ocho URL por producto, cambio de imagen al pasar el cursor y selección de fotos en la ficha.
 - Venta con carrito, búsqueda por código o nombre, descuento por línea y medio de pago.
@@ -72,7 +72,7 @@ Las pruebas con base PostgreSQL real requieren `TEST_DATABASE_URL` apuntando a u
 La operación comercial conserva todos los datos en Supabase. Los cálculos se ejecutan en el servidor Streamlit y los pronósticos se guardan en Supabase cuando el usuario confirma. Una laptop no necesita permanecer encendida para sostener el despliegue; la disponibilidad depende de los servicios y sus planes.
 ## Actualización de caja e historial
 
-La migración `database/06_clientes_historial_ticket.sql` añade clientes identificados, referencias de pago, tickets internos inmutables y búsqueda paginada. La aplicación reduce consultas repetidas y verifica Firebase una vez por ejecución. Consulta [la guía de instalación y alcance](docs/10_RENDIMIENTO_CLIENTES_Y_TICKETS.md). La confirmación de pago sigue siendo manual y el ticket PDF no sustituye una boleta electrónica SUNAT.
+La migración `database/06_clientes_historial_ticket.sql` añade clientes identificados, referencias de pago, tickets internos inmutables y búsqueda paginada. La aplicación reduce consultas repetidas y verifica Firebase una vez por ejecución. Consulta [la guía de instalación y alcance](docs/10_RENDIMIENTO_CLIENTES_Y_TICKETS.md). Los medios manuales conservan la confirmación en caja; el flujo Yape actualizado se describe en la guía 15. El ticket PDF no sustituye una boleta electrónica SUNAT.
 
 # Actualización: fiados y espera de Yape
 
@@ -80,5 +80,5 @@ Consulta [instalación y alcance](docs/12_FIADOS_Y_ESPERA_DE_PAGO.md) y
 [propuesta de migración a web propia](docs/13_MIGRACION_WEB_Y_ALOJAMIENTO.md).
 Las migraciones 06 a 09 añaden clientes, tickets, avisos, cuentas por cobrar y órdenes de cobro.
 Activa `CREDIT_ENABLED = true` para fiados; la espera requiere además configurar el lector Android.
-Un aviso detectado requiere revisión del abono antes de registrar la venta.
+La actualización SQL 10 conecta el botón principal de Yape con la espera y el registro basado en avisos. Consulta [la guía vigente de caja, clientes y error 401](docs/15_CAJA_YAPE_CLIENTES.md). Requiere instalar y conectar el lector Android; no verifica saldo bancario. Fiado permite seleccionar las cuentas existentes.
 

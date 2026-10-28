@@ -11,3 +11,7 @@ __pycache__/
 .firebase/
 node_modules/
 *.log
+*.apk
+android-receptor/.gradle/
+android-receptor/**/build/
+android-receptor/local.properties
