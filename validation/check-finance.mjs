@@ -11,10 +11,10 @@ const items=n=>JSON.stringify([{producto_id:1,cantidad:n,descuento:0}]);
 const today=()=>s("select (now() at time zone 'America/Lima')::date::text");
 try {
  await db.exec('create role anon;create role authenticated;create role service_role bypassrls;');
- for(const f of ['01_bodega_schema.sql','03_catalogo_visual.sql','04_galeria_y_bi.sql','05_confirmacion_pago.sql','06_clientes_historial_ticket.sql','07_piloto_avisos_yape.sql','08_fiado.sql','09_espera_cobros.sql']) {
+ for(const f of ['01_bodega_schema.sql','03_catalogo_visual.sql','04_galeria_y_bi.sql','05_confirmacion_pago.sql','06_clientes_historial_ticket.sql','07_piloto_avisos_yape.sql','08_fiado.sql','09_espera_cobros.sql','10_caja_yape_clientes.sql']) {
   await db.exec(readFileSync(root+'database/'+f,'utf8'));await db.exec(readFileSync(root+'database/'+f,'utf8'));
  }
- await db.exec(readFileSync(root+'database/02_catalogo_demo_OPCIONAL.sql','utf8'));pass('migraciones 06 a 09 repetibles');
+ await db.exec(readFileSync(root+'database/02_catalogo_demo_OPCIONAL.sql','utf8'));pass('migraciones 06 a 10 repetibles');
  const account=(await s("select bodega_configurar_fiado('12345678','Cliente prueba',20,true,'admin')")).cuenta_id;
  const due=await today();const op=randomUUID();
  const credit=(id,n=2,acct=account,amt=9.6)=>s("select bodega_vender_fiado($1,$2,$3,$4,$5,'cashier')",[id,items(n),acct,due,amt]);
@@ -42,7 +42,7 @@ try {
  await assert.rejects(()=>credit(randomUUID(),1,account,4.8),/fiado vencido/);pass('deuda vencida bloquea nuevas compras');
  const aggregate=await s("select bodega_resumen_fiado($1,$1,'analista')",[due]);assert.equal(Number(aggregate.credito_periodo),9.6);assert.equal(Number(aggregate.abonos_periodo),4);assert.equal(Number(aggregate.cartera_actual),5.6);pass('BI distingue ventas a crédito, abonos y cartera sin datos personales');
  await db.exec("update bodega_fiado_cargos set vencimiento=(now() at time zone 'America/Lima')::date");
- const device=randomUUID(),token='a'.repeat(64),hash=createHash('sha256').update(token).digest('hex');
+ let device=randomUUID();const token='a'.repeat(64),hash=createHash('sha256').update(token).digest('hex');
  await s("select bodega_vincular_receptor($1,'S23 Ultra',$2,'admin')",[device,hash]);
  const start=id=>s("select bodega_abrir_cobro($1,$2,$3,'{}',4.8,'cashier')",[id,device,items(1)]);
  const status=id=>s("select bodega_estado_cobro($1,'cashier')",[id]);
@@ -65,12 +65,61 @@ try {
  const finish=()=>s("select bodega_finalizar_cobro($1,'REGISTRAR','COBRO-OK','YAPE',true,'cashier')",[final]);
  const done=await finish();assert.deepEqual(await finish(),done);assert.equal((await status(final)).estado,'REGISTRADO');
  assert.equal(await s('select count(*) from bodega_ventas'),before+1);pass('confirmación revisada y reintento generan una sola venta y ticket');
+
+ const found=await s("select bodega_buscar_clientes('Cliente','cashier')");assert.equal(found[0].dni,'12345678');
+ assert.equal((await s("select bodega_buscar_clientes('%','cashier')")).length,0);pass('selector privado busca clientes por nombre o DNI sin comodines inyectados');
+ const freshReceiver=async()=>{device=randomUUID();await s("select bodega_vincular_receptor($1,'Receptor prueba',$2,'admin')",[device,hash]);await send(null);};
+ await freshReceiver();const auto=randomUUID();await start(auto);
+ await assert.rejects(()=>s("select bodega_confirmar_cobro_aviso($1,'cashier')",[auto]),/aviso único/);
+ await assert.rejects(()=>s("select bodega_confirmar_cobro_aviso($1,'otro')",[auto]),/no encontrado/);
+ const eauto=event();await send(eauto);
+ const autoFinish=()=>s("select bodega_confirmar_cobro_aviso($1,'cashier')",[auto]);
+ assert.equal((await autoFinish()).estado,'DETECTADO');
+ const countBeforeAuto=await s('select count(*) from bodega_ventas');
+ assert.equal(countBeforeAuto,before+1);
+ await db.query("update bodega_cobros set creado_en=now()-interval '10 seconds' where id=$1",[auto]);
+ const aid=await s('select aviso_id from bodega_cobros where id=$1',[auto]);
+ await db.query("update bodega_pago_avisos set recibido_en=now()-interval '6 seconds',notificado_en=now()-interval '6 seconds' where id=$1",[aid]);
+ const autoDone=await autoFinish();assert.equal(autoDone.estado,'REGISTRADO');assert.deepEqual(await autoFinish(),autoDone);
+ assert.equal(await s('select count(*) from bodega_ventas'),countBeforeAuto+1);
+ const autoTicket=await s("select bodega_ticket_venta($1,'cashier')",[autoDone.venta_id]);
+ assert.equal(autoTicket.pago_validacion,'AVISO_DISPOSITIVO');assert.equal(autoTicket.pago_referencia,'AVISO-YAPE-'+aid);
+ assert.equal(autoTicket.cobro_id,auto);pass('Yape automático espera el margen, confirma una vez y conserva evidencia sin inventar código bancario');
+ await freshReceiver();const stale=randomUUID();await start(stale);const estale=event();await send(estale);await status(stale);
+ const staleAid=await s('select aviso_id from bodega_cobros where id=$1',[stale]);
+ await db.query("update bodega_cobros set creado_en=now()-interval '100 seconds' where id=$1",[stale]);
+ await db.query("update bodega_pago_avisos set notificado_en=now()-interval '80 seconds' where id=$1",[staleAid]);
+ await assert.rejects(()=>s("select bodega_confirmar_cobro_aviso($1,'cashier')",[stale]),/conciliación/);await cancel(stale);
+ pass('no registra automáticamente avisos retrasados por conexión ni órdenes de otro cajero');
+ await freshReceiver();const ambiguousAuto=randomUUID();await start(ambiguousAuto);await send(event());await send(event());
+ await assert.rejects(()=>s("select bodega_confirmar_cobro_aviso($1,'cashier')",[ambiguousAuto]),/aviso único/);await cancel(ambiguousAuto);
+ assert.equal(await s('select count(*) from bodega_ventas'),countBeforeAuto+1);pass('dos avisos iguales bloquean el registro automático');
+ await freshReceiver();const noStock=randomUUID();await start(noStock);await send(event());await status(noStock);
+ const nostockAid=await s('select aviso_id from bodega_cobros where id=$1',[noStock]);
+ await db.query("update bodega_cobros set creado_en=now()-interval '10 seconds' where id=$1",[noStock]);
+ await db.query("update bodega_pago_avisos set notificado_en=now()-interval '6 seconds',recibido_en=now()-interval '6 seconds' where id=$1",[nostockAid]);
+ const oldStock=await s('select stock from bodega_productos where id=1');await db.exec('update bodega_productos set stock=0 where id=1');
+ await assert.rejects(()=>s("select bodega_confirmar_cobro_aviso($1,'cashier')",[noStock]),/Stock insuficiente/);
+ assert.equal(await s('select count(*) from bodega_ventas'),countBeforeAuto+1);
+ assert.equal(await s('select estado from bodega_cobros where id=$1',[noStock]),'DETECTADO');
+ await db.query('update bodega_productos set stock=$1 where id=1',[oldStock]);await cancel(noStock);
+ pass('sin stock al terminar se revierte la venta y se conserva la orden para conciliar');
+ device=randomUUID();await s("select bodega_vincular_receptor($1,'Sin instalar',$2,'admin')",[device,hash]);
+ await assert.rejects(()=>start(randomUUID()),/conexión reciente/);await send(null);
+ await assert.rejects(()=>s("select bodega_abrir_cobro($1,$2,$3,$4,4.8,'cashier')",[randomUUID(),device,items(1),JSON.stringify({dni:'Alexander',nombre:'Cliente prueba'})]),/cliente inválidos/);
+ pass('el servidor rechaza un DNI con letras y un celular que nunca se conectó');
+ await db.exec('set role service_role');
+ assert.equal((await s("select bodega_diagnostico_caja('admin')")).ok,true);await db.exec('reset role');
+ pass('diagnóstico real del rol de servidor sin escrituras ni claves');
  await s("select bodega_revocar_receptor($1,'admin')",[device]);await assert.rejects(()=>send(event()),/no autorizado/);
  for(const role of ['anon','authenticated']) {
   await db.exec('set role '+role);
   await assert.rejects(()=>s("select bodega_consultar_fiado('',null,'admin')"));
   await assert.rejects(()=>db.exec('select * from bodega_cobros'));
-  await assert.rejects(()=>send(event()));await db.exec('reset role');
+  await assert.rejects(()=>send(event()));
+  await assert.rejects(()=>s("select bodega_buscar_clientes('','admin')"));
+  await assert.rejects(()=>s("select bodega_confirmar_cobro_aviso($1,'cashier')",[auto]));
+  await db.exec('reset role');
  }pass('revocación y acceso privado de cuentas, avisos y cobros');
- writeFileSync(root+'docs/12_VERIFICACION_SQL.json',JSON.stringify({checks,entorno:'PGlite local',produccion_modificada:false},null,2));
-}catch(e){console.error('FALLO:',e.message);process.exitCode=1;}finally{await db.close();}
+ writeFileSync(root+'docs/15_VERIFICACION_SQL.json',JSON.stringify({checks,entorno:'PGlite local',produccion_modificada:false},null,2));
+}catch(e){console.error('FALLO:',e.stack);process.exitCode=1;}finally{await db.close();}
