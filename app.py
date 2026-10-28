@@ -8,7 +8,7 @@ import plotly.express as px
 import streamlit as st
 
 from bodega.config import mode
-from bodega.auth import AccessError, login, require_identity, logout, send_verification, identity_scope
+from bodega.auth import AccessError, AuthUnavailable, login, require_identity, logout, send_verification, identity_scope, request_login
 from bodega.repository import CloudRepository, DataError
 from bodega.demo import DemoRepository
 from bodega.imports import validate_csv, COLUMNS
@@ -305,6 +305,8 @@ def main():
     else:
         if "identity" not in st.session_state:
             hero("Bienvenido a Bodega Marga", "Accede con tu cuenta asignada para registrar ventas y revisar tu inventario.")
+            notice=st.session_state.pop("login_notice",None)
+            if notice:st.info(notice)
             with st.form("login"):
                 email=st.text_input("Correo",max_chars=180)
                 password=st.text_input("Contraseña",type="password",key="login_password")
@@ -320,8 +322,10 @@ def main():
             st.caption("El propietario habilita las cuentas en Firebase Authentication y asigna los roles.")
             return
         try: identity=require_identity()
-        except AccessError as exc:
-            logout(); st.error(str(exc)); return
+        except AuthUnavailable as exc:
+            st.warning(str(exc)); return
+        except AccessError:
+            request_login()
         role=identity["role"]
         repo=st.session_state.get("cloud_repo")
         from bodega.config import setting
@@ -370,7 +374,12 @@ def main():
 try:
     with identity_scope():
         main()
-except (DataError,AccessError,ValueError) as exc:
+except AuthUnavailable as exc:
+    st.warning(str(exc))
+except AccessError as exc:
+    if "identity" in st.session_state:request_login()
+    else:st.error(str(exc))
+except (DataError,ValueError) as exc:
     if isinstance(exc,DataError) and exc.confirmed_rejected:
         if "pending_sale" in st.session_state:
             st.session_state["reset_payment_confirmation"]=True

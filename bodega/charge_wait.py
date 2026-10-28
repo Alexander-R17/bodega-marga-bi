@@ -5,7 +5,7 @@ import secrets
 import time
 from uuid import uuid4
 import streamlit as st
-from bodega.auth import identity_scope
+from bodega.auth import identity_scope, web_session_guard
 from bodega.config import setting
 from datetime import datetime, timezone
 from bodega.repository import DataError
@@ -30,8 +30,8 @@ def _done(result,repo=None):
 
 @st.dialog('Cobro por Yape',dismissible=False,width='small')
 def _dialog(repo):
-    @st.fragment(run_every=3)
-    def monitor():
+    @web_session_guard
+    def monitor_body():
         op=st.session_state['active_charge']['id']
         with identity_scope():
             try:status=repo.charge_status(op)
@@ -74,6 +74,9 @@ def _dialog(repo):
                 finish(repo,op,cancel=True)
                 st.session_state.pop('active_charge',None);st.rerun(scope='app')
             except DataError as exc:st.error(str(exc))
+    @st.fragment(run_every=3)
+    def monitor():
+        return monitor_body()
     monitor()
 
 

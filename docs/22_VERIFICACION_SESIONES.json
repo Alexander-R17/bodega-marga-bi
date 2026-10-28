@@ -1,0 +1,14 @@
+{
+  "version": "14.2",
+  "base_commit": "e52f8cb",
+  "fecha": "2026-10-28",
+  "general_pasaron": 130,
+  "general_omitidas": 9,
+  "ultimo_ajuste_focalizadas": 34,
+  "conteos_se_superponen": true,
+  "produccion_modificada": false,
+  "requiere_sql": false,
+  "requiere_apk": false,
+  "requiere_edge_deploy": false,
+  "limite": "Renovación Firebase y fallos simulados; sesión inactiva real pendiente de comprobar en el despliegue."
+}

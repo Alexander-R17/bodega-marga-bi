@@ -2,7 +2,7 @@
 from copy import deepcopy
 from uuid import uuid4
 import streamlit as st
-from bodega.auth import identity_scope
+from bodega.auth import identity_scope, web_session_guard
 from bodega.config import mode
 from bodega.repository import DataError
 
@@ -58,20 +58,28 @@ def finish(repo,op,cancel=False):
     st.session_state.pop('shared_upload',None)
 
 
-@st.fragment(run_every=3)
-def monitor(repo):
-    if not available(repo):return
-    if any(k in st.session_state for k in ('pending_sale','pending_credit','active_charge','shared_upload')):return
-    with identity_scope():
+@web_session_guard
+def _monitor(repo):
+    try:
+        if not available(repo):return
+        if any(k in st.session_state for k in ('pending_sale','pending_credit','active_charge','shared_upload')):return
         result=repo.shared_read()
+    except DataError:
+        st.caption('No se pudo actualizar el carrito. Se reintentará sin cambiar la venta ni las existencias.')
+        return
     previous=st.session_state.get('shared_snapshot')
     if previous is None:
-        sync(repo);st.rerun(scope='app')
+        adopt(result);st.rerun(scope='app')
     if previous and (previous.get('revision')!=result['revision'] or previous.get('catalogo_revision')!=result.get('catalogo_revision')):
         # No publicar una copia vieja después de que otro dispositivo la cambie.
         if st.session_state.get('cart',[])==previous['items']:
             adopt(result);repo.clear_cache();st.rerun(scope='app')
     st.caption('Carrito e inventario compartidos · actualización cada 3 segundos')
+
+
+@st.fragment(run_every=3)
+def monitor(repo):
+    return _monitor(repo)
 
 
 def status(repo):

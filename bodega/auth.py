@@ -1,13 +1,19 @@
 import time
 from contextlib import contextmanager
 from contextvars import ContextVar
+from functools import wraps
+from copy import deepcopy
 import requests
 import streamlit as st
-from bodega.config import setting
+from bodega.config import setting, mode
 
 
 class AccessError(Exception):
     pass
+
+
+class AuthUnavailable(AccessError):
+    """Fallo temporal: conservar la sesión y no ejecutar operaciones privadas."""
 
 
 _execution = ContextVar("bodega_identity_execution", default=None)
@@ -57,6 +63,8 @@ def verify(token):
         return auth.verify_id_token(token, app=firebase_app(), check_revoked=True)
     except AccessError:
         raise
+    except auth.CertificateFetchError:
+        raise AuthUnavailable("No se pudo comprobar el acceso. Reintentaremos cuando vuelva la conexión.") from None
     except Exception:
         raise AccessError("La sesión no es válida. Inicia sesión nuevamente.") from None
 
@@ -78,9 +86,39 @@ def login(email, password):
     token = response.json()["idToken"]
     claims = verify(token)
     role = role_for(claims)
+    resume = st.session_state.pop("login_resume", None)
+    if resume and resume.get("uid") == claims["uid"] and resume.get("project") == setting("FIREBASE_PROJECT_ID") and resume.get("database") == setting("SUPABASE_URL"):
+        st.session_state.update(resume["state"])
     st.session_state["identity"] = {"token": token, "uid": claims["uid"],
                                     "email": claims["email"], "role": role,
+                                    "refresh_token": response.json().get("refreshToken", ""),
+                                    "expires_at": claims.get("exp", time.time()+int(response.json().get("expiresIn",3600))),
                                     "started": time.time()}
+
+
+def _renew(identity):
+    """Renueva solo esta sesión web; nunca revoca sesiones del celular."""
+    try:
+        response = requests.post("https://securetoken.googleapis.com/v1/token",
+            params={"key": setting("FIREBASE_API_KEY")},
+            data={"grant_type":"refresh_token", "refresh_token":identity["refresh_token"]}, timeout=20)
+    except requests.RequestException:
+        raise AuthUnavailable("No se pudo renovar el acceso. Reintentaremos cuando vuelva la conexión.") from None
+    if response.status_code >= 500 or response.status_code == 429:
+        raise AuthUnavailable("El servicio de acceso está temporalmente ocupado. Intenta nuevamente.")
+    if not response.ok:
+        raise AccessError("Tu sesión web necesita un nuevo acceso.")
+    try:
+        data=response.json();token=data["id_token"]
+        expires=time.time()+int(data.get("expires_in",3600))
+    except (ValueError, KeyError, TypeError):
+        raise AuthUnavailable("No se recibió la renovación del acceso. Intenta nuevamente.") from None
+    claims=verify(token);role=role_for(claims)
+    if claims.get("uid") != identity["uid"] or claims.get("email","").lower() != identity["email"].lower():
+        raise AccessError("Sesión inconsistente.")
+    identity.update(token=token, refresh_token=data.get("refresh_token") or identity["refresh_token"],
+                    expires_at=claims.get("exp",expires),role=role)
+    return claims
 
 
 def send_verification(email, password):
@@ -102,12 +140,16 @@ def require_identity():
     if not identity:
         raise AccessError("Inicia sesión para acceder.")
     # Verificación en cada ejecución: revocación, cuenta deshabilitada y expiración.
-    # Duración máxima del token ~1 h; se solicita un nuevo acceso al expirar.
+    # La renovación usa únicamente el refresh token de esta sesión del servidor.
     scope = _execution.get()
     token = identity["token"]
     claims = scope.get(token) if scope is not None else None
     if claims is None:
-        claims = verify(token)
+        if identity.get("refresh_token") and identity.get("expires_at",0) <= time.time()+60:
+            claims = _renew(identity)
+            token = identity["token"]
+        else:
+            claims = verify(token)
         if scope is not None:
             scope[token] = claims
     role = role_for(claims)
@@ -126,3 +168,32 @@ def require_role(*roles):
 
 def logout():
     st.session_state.clear()
+
+
+def request_login():
+    """Oculta datos y conserva solo operaciones recuperables del mismo UID."""
+    identity=st.session_state.get("identity",{})
+    keys=("cart","shared_snapshot","shared_upload","previous_local_cart","pending_sale",
+          "pending_credit","active_charge","charge_start_candidate","pending_movement",
+          "pending_annul","pending_decision","shop_view")
+    resume={"uid":identity.get("uid"),"project":setting("FIREBASE_PROJECT_ID"),"database":setting("SUPABASE_URL"),
+            "state":{k:deepcopy(st.session_state[k]) for k in keys if k in st.session_state}}
+    logout()
+    if resume["uid"] and resume["state"]:st.session_state["login_resume"]=resume
+    st.session_state["login_notice"]="Tu sesión web necesita un nuevo acceso. Inicia sesión para continuar."
+    st.rerun(scope="app")
+
+
+def web_session_guard(function):
+    """Los fragmentos autónomos controlan su propia autenticación y sus errores."""
+    @wraps(function)
+    def guarded(*args,**kwargs):
+        try:
+            with identity_scope():
+                if mode()!='demo':require_identity()
+                return function(*args,**kwargs)
+        except AuthUnavailable as exc:
+            st.warning(str(exc))
+        except AccessError:
+            request_login()
+    return guarded
