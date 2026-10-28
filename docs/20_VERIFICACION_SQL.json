@@ -1,0 +1,20 @@
+{
+  "motor": "PGlite PostgreSQL aislado",
+  "checks": [
+    "SQL 14 repetible sin instalar 12 ni 13",
+    "UID y email ligados; roles y costos se protegen en el servidor",
+    "móvil y web leen el mismo carrito; reintentar no duplica ni descuenta stock",
+    "carritos por persona y control de versión impiden sobrescribir cambios ajenos",
+    "cobro bloquea edición; venta confirmada limpia carrito y descuenta una sola vez",
+    "cancelar un cobro no pierde productos ni inventa una venta",
+    "creación nativa y QR alternativo atómicos e idempotentes; ficha sin stock ficticio",
+    "entrada real compartida y reintento sin duplicar stock; auditoría conserva responsable",
+    "web y móvil rechazan ediciones de ficha obsoletas en vez de pisar datos",
+    "QR ya asociado revierte creación completa; no deja fichas parciales",
+    "DNI obligatorio, nombre opcional y métodos de caja vigentes",
+    "Yape conserva aviso único, observación y una venta por operación",
+    "RLS y RPC privados: ningún acceso directo con anon o authenticated"
+  ],
+  "pasaron": 13,
+  "produccion_modificada": false
+}

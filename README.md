@@ -1,3 +1,7 @@
+# Actualización 14 · app Android nativa
+
+Lee [LEEME_APP_NATIVA_14.txt](LEEME_APP_NATIVA_14.txt). Esta versión sustituye la 13: interfaz nativa, Firebase existente, inventario y carrito compartidos. Sobre la instalación operativa ejecuta **solo SQL 14** y publica `tienda-movil`.
+
 # Bodega Marga BI · Tienda inteligente
 
 Adaptación del proyecto Smart Campus para el MVP definido en **G9_INFORME.docx (4).pdf**: registrar ventas por producto, controlar inventario y convertir los registros en decisiones de reposición. Caso piloto: Bodega Marga, Los Olivos, Lima, 2026.

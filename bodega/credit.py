@@ -19,21 +19,25 @@ def enabled():
 def account_data(dni,name,limit):
     customer=customer_data({'dni':dni,'nombre':name})
     amount=confirmed_amount(limit)
-    if not customer['dni'] or amount>1000000:
+    if not customer['dni'] or not customer['nombre'] or amount>1000000:
         raise DataError('Datos de cuenta de fiado inválidos')
     return customer,amount
 
 
 def _complete_sale(repo,pending,finish,notify):
     try:
+        from bodega.shared_cart import freeze
+        freeze(repo,pending['op'])
         result=repo.credit_sale(**pending)
     except DataError as exc:
         st.error(str(exc));return
     st.session_state['last_sale_receipt']={**result,'payment':'Fiado'}
     st.session_state.pop('pending_credit',None)
     st.session_state['cart']=[];st.session_state['reset_payment_confirmation']=True
+    from bodega.shared_cart import finish as shared_finish
+    shared_finish(repo,pending['op'])
     notify(repo,'venta_fiada_registrada')
-    finish(f"Venta {result['orden']} registrada a fiado. El dinero queda pendiente de cobro.")
+    finish('Venta realizada')
 
 
 def pending_checkout(repo,finish,notify):
@@ -43,6 +47,8 @@ def pending_checkout(repo,finish,notify):
     if st.button('Reintentar venta a fiado',type='primary'):_complete_sale(repo,pending,finish,notify)
     st.caption('Si no hubo respuesta, revisa el historial antes de abandonar la operación. No generes otra venta para el mismo pedido.')
     if st.button('Dejar de reintentar y revisar el historial'):
+        from bodega.shared_cart import finish
+        finish(repo,pending['op'],cancel=True)
         del st.session_state['pending_credit'];st.session_state['page']='Historial de ventas';st.rerun()
     return True
 
@@ -130,7 +136,7 @@ def render(repo,role,today):
                 st.subheader('Registrar abono recibido')
                 sale=st.selectbox('Venta que se está pagando',list(debts),format_func=lambda k:debts[k]['orden']+f" · saldo S/ {float(debts[k]['saldo']):.2f}")
                 amount=st.number_input('Importe del abono S/',min_value=0.01,max_value=1000000.,value=1.,step=1.)
-                payment=st.selectbox('Medio del abono',['Efectivo','Yape','Plin','Transferencia','Tarjeta'])
+                payment=st.selectbox('Medio del abono',['Efectivo','Yape','Transferencia'])
                 reference=st.text_input('Referencia del abono (vacía si es efectivo)',max_chars=100)
                 entity=st.text_input('Entidad receptora del abono (vacía si es efectivo)',max_chars=60)
                 checked=st.checkbox('Comprobé que recibí este abono en efectivo o en la cuenta del negocio')

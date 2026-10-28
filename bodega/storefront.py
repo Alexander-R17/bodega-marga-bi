@@ -18,7 +18,7 @@ PAGES = ["Inicio", "Registrar venta", "Historial de ventas", "Fiados", "Inventar
 NAV_LABELS = {"Inicio":"Inicio", "Registrar venta":"Tienda interna", "Inventario":"Inventario",
     "Resumen BI":"BI", "Reposición":"Reposición", "Pronóstico":"Pronóstico",
     "Importar historial":"Importar", "Actividad y datos":"Actividad", "Historial de ventas":"Ventas", "Fiados":"Fiados"}
-PAYMENTS = ["Efectivo", "Yape", "Plin", "Tarjeta", "Transferencia"]
+PAYMENTS = ["Efectivo", "Yape", "Transferencia"]
 
 
 def soles(value):
@@ -44,7 +44,7 @@ def open_catalog():
 
 
 def _editable(role):
-    return role in {"administrador", "cajero"} and not any(k in st.session_state for k in ('pending_sale','pending_credit','active_charge'))
+    return role in {"administrador", "cajero"} and st.session_state.get('shared_snapshot',{}).get('estado','ABIERTO')=='ABIERTO' and not any(k in st.session_state for k in ('pending_sale','pending_credit','active_charge','shared_upload'))
 
 
 def _add(products, product_id, quantity, role, discount=0):
@@ -331,14 +331,18 @@ def _confirm(repo, payment, products, finish, notify):
         st.session_state["pending_sale"] = {"op": str(uuid4()), "items": [dict(x) for x in _cart()],
             "payment": payment, "confirmed_total": rules.totals(rows)["total"],**context}
     pending = st.session_state["pending_sale"]
+    from bodega.shared_cart import freeze
+    freeze(repo,pending['op'])
     result = repo.sale(pending["op"], pending["items"], pending["payment"], confirmed_total=pending.get("confirmed_total"),
         customer=pending.get('customer'),reference=pending.get('reference',''),entity=pending.get('entity',''))
     st.session_state["last_sale_receipt"] = {"venta_id": result["venta_id"], "total": float(result["total"]), "payment": pending["payment"], 'orden':result.get('orden',str(result['venta_id']))}
     del st.session_state["pending_sale"]
     st.session_state["cart"] = []
     st.session_state["reset_payment_confirmation"] = True
+    from bodega.shared_cart import finish as shared_finish
+    shared_finish(repo,pending['op'])
     notify(repo, "venta_confirmada")
-    finish(f'Venta {result["venta_id"]} confirmada · {soles(result["total"])}')
+    finish('Venta realizada')
 
 
 def checkout_page(repo, products, role, finish, notify):
@@ -348,7 +352,7 @@ def checkout_page(repo, products, role, finish, notify):
     st.button("← Seguir agregando productos", on_click=open_catalog)
     receipt = st.session_state.get("last_sale_receipt")
     if receipt and not _cart():
-        if st.session_state.pop('show_yape_success',False):charge_wait.success_animation()
+        st.session_state.pop('show_yape_success',None)
         st.markdown(f'<section class="receipt"><strong>Venta {receipt["venta_id"]} registrada</strong><p>{soles(receipt["total"])} · {html.escape(receipt["payment"])} · Consulta el resultado en BI o en actividad.</p></section>', unsafe_allow_html=True)
         from bodega.receipts import receipt_panel
         receipt_panel(repo,receipt['venta_id'])
@@ -367,6 +371,7 @@ def checkout_page(repo, products, role, finish, notify):
         return
     left, right = st.columns([1.8, 1], gap="large")
     selected_payment=st.session_state.get('sale_payment','Efectivo')
+    if selected_payment not in PAYMENTS+(['Fiado'] if credit.enabled() else []):selected_payment='Efectivo';st.session_state['sale_payment']='Efectivo'
     account=None
     with left:
         st.subheader('Cliente de la venta')
@@ -417,17 +422,7 @@ def checkout_page(repo, products, role, finish, notify):
                 charge_wait.checkout(repo,_cart(),customer,amount['total'],customer_valid and all(x['activo'] and x['cantidad']<=x['stock'] for x in rows))
                 return
             reference=entity='';payment_valid=True
-            if payment!='Efectivo':
-                defaults={'Yape':'Yape del negocio','Plin':'Plin del negocio','Tarjeta':'POS del negocio','Transferencia':'BCP'}
-                entity=st.text_input('Entidad o cuenta receptora',value=defaults[payment],max_chars=60,key=f'payment_entity_{payment}')
-                reference=st.text_input('Código de operación del pago',max_chars=100,key='payment_reference',
-                    help='Referencia del abono o código de aprobación del POS. No ingreses el número de tarjeta.')
-                try:
-                    details=payment_data(payment,reference,entity)
-                    reference,entity=details['reference'],details['entity']
-                except DataError:
-                    payment_valid=False
-                    st.caption('Completa una referencia válida de al menos 4 caracteres para identificar el pago.')
+            if payment=='Transferencia':st.info('Transferencia: comprueba manualmente el abono en la banca del negocio. La integración automática del banco está pendiente.')
             context={'customer':customer,'reference':reference,'entity':entity}
             st.session_state['checkout_context']=context
             current = fingerprint(rows, payment,**context)
@@ -453,6 +448,8 @@ def sale_page(repo, products, role, finish, notify, sales):
     if role not in {"administrador", "cajero"}:
         st.info("El registro de ventas corresponde a caja o administración.")
         return
+    from bodega.shared_cart import status
+    if status(repo):return
     if st.session_state.get("shop_view") == "carrito" or "pending_sale" in st.session_state:
         checkout_page(repo, products, role, finish, notify)
     else:

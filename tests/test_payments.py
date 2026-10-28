@@ -8,7 +8,7 @@ from bodega.payments import confirmed_amount
 def test_unconfirmed_or_invalid_payment_never_changes_demo_stock(amount):
     repo=DemoRepository();stock=repo.products[0]["stock"];count=len(repo.headers)
     with pytest.raises(DataError):
-        repo.sale("payment",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=amount)
+        repo.sale("payment",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=amount,customer={'dni':'12345678','nombre':''})
     assert repo.products[0]["stock"]==stock and len(repo.headers)==count
 
 
@@ -16,7 +16,7 @@ def test_price_change_after_payment_confirmation_leaves_no_sale_or_operation():
     repo=DemoRepository();stock=repo.products[0]["stock"];count=len(repo.headers)
     paid=repo.products[0]["precio"];repo.products[0]["precio"]+=1
     with pytest.raises(DataError,match="total cambió"):
-        repo.sale("payment",[{"producto_id":1,"cantidad":1,"descuento":0}],"Efectivo",confirmed_total=paid)
+        repo.sale("payment",[{"producto_id":1,"cantidad":1,"descuento":0}],"Efectivo",confirmed_total=paid,customer={'dni':'12345678','nombre':''})
     assert repo.products[0]["stock"]==stock and len(repo.headers)==count
     assert "payment" not in repo.operations
 

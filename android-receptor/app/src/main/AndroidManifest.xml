@@ -2,11 +2,15 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <application android:label="Bodega Marga · Avisos" android:allowBackup="false" android:usesCleartextTraffic="false"
-        android:icon="@drawable/ic_receptor" android:roundIcon="@drawable/ic_receptor" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <application android:label="Bodega Marga" android:allowBackup="false" android:usesCleartextTraffic="false"
+        android:icon="@drawable/ic_receptor" android:roundIcon="@drawable/ic_receptor" android:theme="@style/MargaTheme">
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
+        <activity android:name=".ReceiverActivity" android:exported="false" />
+        <activity android:name=".ScanActivity" android:exported="false" android:screenOrientation="portrait" />
         <service android:name=".YapeListener" android:exported="false" android:label="Bodega Marga: avisos de Yape"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter><action android:name="android.service.notification.NotificationListenerService" /></intent-filter>

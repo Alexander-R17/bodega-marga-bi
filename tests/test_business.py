@@ -13,12 +13,12 @@ def test_sale_retry_and_stock():
     before=repo.products[0]["stock"]
     items=[{"producto_id":1,"cantidad":2,"descuento":.2}]
     total=round(2*repo.products[0]["precio"]-.2,2)
-    first=repo.sale("op-1",items,"Yape",confirmed_total=total,reference='TEST-001',entity='YAPE')
-    second=repo.sale("op-1",items,"Yape",confirmed_total=total,reference='TEST-001',entity='YAPE')
+    first=repo.sale("op-1",items,"Yape",confirmed_total=total,reference='TEST-001',entity='YAPE',customer={'dni':'12345678','nombre':''})
+    second=repo.sale("op-1",items,"Yape",confirmed_total=total,reference='TEST-001',entity='YAPE',customer={'dni':'12345678','nombre':''})
     assert first==second
     assert repo.products[0]["stock"]==before-2
     with pytest.raises(DataError,match="reutilizada"):
-        repo.sale("op-1",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=total,reference='TEST-001',entity='YAPE')
+        repo.sale("op-1",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=total,reference='TEST-001',entity='YAPE',customer={'dni':'12345678','nombre':''})
 
 
 def test_failed_cart_does_not_partially_reduce_stock():
@@ -26,13 +26,13 @@ def test_failed_cart_does_not_partially_reduce_stock():
     before=repo.products[0]["stock"]
     with pytest.raises(DataError,match="Stock insuficiente"):
         repo.sale("bad",[{"producto_id":1,"cantidad":1,"descuento":0},
-                         {"producto_id":3,"cantidad":1,"descuento":0}],"Efectivo",confirmed_total=10)
+                         {"producto_id":3,"cantidad":1,"descuento":0}],"Efectivo",confirmed_total=10,customer={'dni':'12345678','nombre':''})
     assert repo.products[0]["stock"]==before
 
 
 def test_annul_is_idempotent_and_excludes_revenue():
     repo=DemoRepository(); before=repo.products[0]["stock"]
-    result=repo.sale("sale",[{"producto_id":1,"cantidad":2,"descuento":0}],"Plin",confirmed_total=2*repo.products[0]["precio"],reference='TEST-002',entity='PLIN')
+    result=repo.sale("sale",[{"producto_id":1,"cantidad":2,"descuento":0}],"Transferencia",confirmed_total=2*repo.products[0]["precio"],reference='TEST-002',entity='BCP',customer={'dni':'12345678','nombre':''})
     repo.annul("annul",result["venta_id"],"Error de caja")
     repo.annul("annul",result["venta_id"],"Error de caja")
     assert repo.products[0]["stock"]==before

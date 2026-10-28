@@ -3,8 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node check-finance.mjs && node --test ../tests/edge_charge.mjs",
-    "test:received": "node check-received-payments.mjs"
+    "test": "node check-native14.mjs && node check-received-payments.mjs && node --test ../tests/edge_charge.mjs ../tests/edge_native.mjs",
+    "test:received": "node check-received-payments.mjs",
+    "test:native": "node check-native14.mjs && node --test ../tests/edge_native.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.11"

@@ -1,3 +1,7 @@
 [functions.recibir-aviso-yape]
 # La función comprueba la credencial revocable del receptor.
 verify_jwt = false
+
+[functions.tienda-movil]
+# El código valida criptográficamente el JWT de Firebase; no usa el JWT heredado de Supabase.
+verify_jwt = false

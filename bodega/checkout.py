@@ -9,14 +9,14 @@ def customer_data(customer=None):
         raise DataError("Datos del cliente inválidos.")
     dni=str(customer.get("dni","") or "").strip()
     name=" ".join(str(customer.get("nombre","") or "").split())
-    if (dni and (not re.fullmatch(r"[0-9]{8}",dni) or not name)) or (name and (not 2<=len(name)<=120
+    if not re.fullmatch(r"[0-9]{8}",dni) or (name and (not 2<=len(name)<=120
         or sum(c.isalpha() for c in name)<2 or any(not(c.isalpha() or c in " .'-’") for c in name))):
-        raise DataError("Datos del cliente inválidos: usa un DNI de 8 dígitos y su nombre, o deja ambos vacíos.")
+        raise DataError("Datos del cliente inválidos: ingresa un DNI de 8 números. El nombre es opcional.")
     return {"dni":dni,"nombre":name}
 
 
 def payment_data(payment,reference="",entity=""):
-    if payment not in {"Efectivo","Yape","Plin","Tarjeta","Transferencia","Fiado"}:
+    if payment not in {"Efectivo","Yape","Transferencia","Fiado"}:
         raise DataError("Medio de pago inválido.")
     if payment in {"Efectivo","Fiado"}: return {"reference":"","entity":""}
     reference=str(reference or "").strip().upper()

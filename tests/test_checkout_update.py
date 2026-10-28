@@ -32,7 +32,8 @@ def test_existing_credit_client_selects_name_and_dni_for_cash_sale(monkeypatch):
     app=open_cart(monkeypatch);repo=app.session_state['demo_repo']
     repo.configure_credit('01234567','Alexander prueba',100,True);app.run()
     app.selectbox(key='sale_registered_customer').select('01234567').run()
-    assert not any(t.key in {'sale_customer_dni','sale_customer_name'} for t in app.text_input)
+    assert app.text_input(key='sale_customer_dni').value=='01234567'
+    assert app.text_input(key='sale_customer_name').value=='Alexander prueba'
     app.checkbox(key='payment_received').check().run()
     next(b for b in app.button if b.label=='Confirmar venta').click().run()
     assert not app.exception and not app.error

@@ -54,6 +54,13 @@ class CloudRepository:
         except requests.RequestException:
             raise DataError("No se recibió confirmación de Supabase. Reintenta la misma operación; conserva su identificador.", confirmed_rejected=False) from None
         if not r.ok:
+            if path.startswith('rpc/bodega_carrito_'):
+                try:detail=r.json().get('message','')
+                except ValueError:detail=''
+                known=['El carrito cambió en otro dispositivo','El carrito está en proceso de cobro','Resuelve primero el cobro abierto','Stock insuficiente o producto inactivo','El producto cambió en otro dispositivo. Recarga su ficha']
+                safe=next((x for x in known if x in detail),None)
+                if safe:raise DataError(safe)
+            if r.status_code==404 and path=='rpc/bodega_activar_movil':raise DataError('Ejecuta database/14_app_nativa_y_carrito.sql para activar la app nativa.')
             try:code=r.json().get('code','')
             except (ValueError,AttributeError):code=''
             if r.status_code in {401,403} and code=='42501':
@@ -166,10 +173,41 @@ class CloudRepository:
         self.clear_cache()
         return result
 
+    def native_ready(self):
+        cache=getattr(self,'_native_readiness',None)
+        if cache and time.monotonic()-cache[0]<10:return cache[1]
+        try:ready=bool(self._request('POST','rpc/bodega_config_movil',json={}))
+        except DataError as exc:
+            if not exc.confirmed_rejected:raise
+            ready=False
+        self._native_readiness=(time.monotonic(),ready);return ready
+
+    def activate_native(self,project,key,team):
+        result=self.rpc('bodega_activar_movil',{'p_project':project,'p_api_key':key,'p_equipo':team})
+        self._native_readiness=(time.monotonic(),True)
+        return result
+
+    def shared_read(self):
+        identity=require_role('administrador','cajero')
+        return self._request('POST','rpc/bodega_carrito_consultar',json={'p_usuario':identity['uid']})
+
+    def shared_write(self,op,items,revision):
+        identity=require_role('administrador','cajero')
+        return self._request('POST','rpc/bodega_carrito_comando',json={'p_id':op,'p_accion':'GUARDAR','p_datos':{'items':items},'p_revision':revision,'p_usuario':identity['uid']})
+
+    def shared_freeze(self,op,revision):
+        return self.rpc('bodega_carrito_bloquear',{'p_id':op,'p_revision':revision},('administrador','cajero'))
+
+    def shared_finish(self,op,cancel=False):
+        return self.rpc('bodega_carrito_liberar',{'p_id':op,'p_cancelar':cancel},('administrador','cajero'))
+
     def sale(self, op, items, payment, *, confirmed_total=None, customer=None, reference="", entity=""):
         from bodega.payments import confirmed_amount
         from bodega.checkout import customer_data,payment_data
         amount = confirmed_amount(confirmed_total)
+        if payment=='Transferencia' and not reference and not entity:
+            from uuid import UUID
+            reference='CAJA-'+str(UUID(str(op))).upper();entity='TRANSFERENCIA DEL NEGOCIO'
         customer=customer_data(customer); details=payment_data(payment,reference,entity)
         return self.rpc("bodega_registrar_venta_caja", {"p_operacion": op, "p_items": items,
             "p_pago": payment, "p_pago_confirmado": True, "p_total_confirmado": str(amount),
@@ -267,6 +305,8 @@ class CloudRepository:
 
     def save_product(self, product):
         require_role("administrador")
+        if self.native_ready():
+            return self.rpc('bodega_guardar_producto_revision',{'p_producto':product,'p_revision':product.get('revision_movil',0)})
         self.clear_cache()
         result=self._request("POST", "rpc/bodega_guardar_producto_galeria", json={"p_producto": product})
         self.clear_cache()

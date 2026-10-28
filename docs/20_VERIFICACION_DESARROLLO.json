@@ -1,0 +1,59 @@
+{
+  "version": "14 / Android 0.5-nativa",
+  "base_github_commit": "8ffacd2f6f084b294c61ede4e87742b6bc5f7c47",
+  "validacion": "Local; no se modificó producción. Pantalla y cámara en S23 Ultra pendientes.",
+  "python_general": {
+    "pasaron": 110,
+    "omitidas": 9,
+    "nota": "Las 9 pruebas que requieren TEST_DATABASE_URL no se ejecutaron contra un PostgreSQL externo."
+  },
+  "python_ultima_revision": {
+    "pasaron": 9,
+    "alcance": "Contratos nativos, búsqueda con nombre opcional y carrito compartido. Se superponen con parte de la suite general."
+  },
+  "edge_functions": {
+    "pasaron": 9,
+    "alcance": "Firebase JWT con firmas RSA sintéticas; revocación, roles, API móvil y receptor Yape."
+  },
+  "sql14_pglite": {
+    "grupos_pasaron": 13,
+    "detalle": "20_VERIFICACION_SQL.json",
+    "nota": "PostgreSQL embebido; no conectado a Supabase de producción."
+  },
+  "sql11_recuperacion_pglite": {
+    "grupos_pasaron": 13
+  },
+  "java_sintetico": {
+    "comprobaciones": 23,
+    "alcance": "Decodificador de códigos de barras/QR y formato Yape; no prueba física de cámara."
+  },
+  "apk": {
+    "archivo": "Bodega_Marga_Android_Nativa_v0_5.apk",
+    "bytes": 664104,
+    "sha256": "f4493261ca848a3663a4c6e872601694597e615eaccd0d68db15a9e1ee8f430f",
+    "paquete": "pe.bodegamarga.avisos",
+    "version_code": 5,
+    "version_name": "0.5-nativa",
+    "sdk_minimo": 28,
+    "sdk_objetivo": 35,
+    "firma_sha256": "6df940b44b025f186374e06586b51b62339e601d239bb8cf525b4521cdeda1d6",
+    "firma_verificada": true,
+    "zipalign_verificado": true
+  },
+  "alcance_nativo": [
+    "Acceso Firebase",
+    "Tienda",
+    "Carrito compartido por UID",
+    "Inventario y movimientos según rol",
+    "Registro y edición de productos",
+    "Cámara para códigos registrados",
+    "Perfil y controles del receptor Yape"
+  ],
+  "continua_en_web": [
+    "Cobro",
+    "Tickets internos",
+    "Historial",
+    "BI"
+  ],
+  "transferencia": "Comprobación manual; no se agregó validación bancaria automática."
+}

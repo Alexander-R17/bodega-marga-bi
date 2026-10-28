@@ -93,7 +93,7 @@ def test_sale_sends_confirmed_amount_and_verified_actor(monkeypatch):
         captured.update(method=method,path=path,**kwargs)
         return {"venta_id":1,"total":4.8}
     monkeypatch.setattr(repo,"_request",request)
-    repo.sale("op",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=4.8,reference='TEST-001',entity='YAPE')
+    repo.sale("op",[{"producto_id":1,"cantidad":1,"descuento":0}],"Yape",confirmed_total=4.8,reference='TEST-001',entity='YAPE',customer={'dni':'12345678','nombre':''})
     assert captured["path"]=="rpc/bodega_registrar_venta_caja"
     assert captured["json"]["p_pago_confirmado"] is True
     assert captured["json"]["p_total_confirmado"]=="4.8"

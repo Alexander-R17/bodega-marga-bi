@@ -128,7 +128,7 @@ def inventory_page(repo,products,role):
             else:
                 repo.save_product({"id":int(pid) if pid is not None else None,"codigo":code.strip(),"nombre":name.strip(),
                     "categoria":category.strip(),"proveedor":supplier.strip(),"precio":round(price,2),"costo":round(cost,2),
-                    "stock_minimo":minimum,"plazo_dias":lead,"activo":enabled,
+                    "stock_minimo":minimum,"plazo_dias":lead,"activo":enabled,"revision_movil":int(p.get("revision_movil",0)),
                     "descripcion":description.strip(),"marca":brand.strip(),"presentacion":presentation.strip(),
                     "imagen_url":images[0] if images else "","imagenes_urls":images})
                 notify(repo,"producto_guardado"); finish("Producto guardado. Registra una entrada para cargar existencias.")
@@ -274,6 +274,8 @@ def activity_page(repo,role):
     hero("Actividad y trazabilidad", "Consulta movimientos, importaciones y pronósticos guardados.")
     if role=="administrador":
         team_editor()
+        from bodega.native_admin import render as native_access
+        native_access(repo)
         from bodega.charge_wait import admin,diagnostics
         diagnostics(repo)
         admin(repo)
@@ -327,8 +329,14 @@ def main():
             if repo is not None: repo.http.close()
             repo=CloudRepository()
             st.session_state["cloud_repo"]=repo
+    if role in {'administrador','cajero'}:
+        from bodega.shared_cart import sync
+        sync(repo)
     products=enrich_products(repo.table("bodega_productos"),repo.table("bodega_categorias"),repo.table("bodega_proveedores"))
     page=storefront.topbar(products,role,app_mode,logout,repo=repo)
+    if role in {'administrador','cajero'} and page in {'Registrar venta','Inventario'}:
+        from bodega.shared_cart import monitor
+        monitor(repo)
     # Caja e inventario no necesitan descargar todo el historial en cada clic.
     sales=prepare_sales(pd.DataFrame())
     if page in {"Resumen BI","Pronóstico"}:

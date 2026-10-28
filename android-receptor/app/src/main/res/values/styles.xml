@@ -1,0 +1,11 @@
+<resources>
+ <style name="MargaTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+  <item name="android:fontFamily">sans</item>
+  <item name="android:colorAccent">#173B32</item>
+  <item name="android:statusBarColor">#F8F7F2</item>
+  <item name="android:navigationBarColor">#FFFFFF</item>
+  <item name="android:windowLightStatusBar">true</item>
+  <item name="android:windowLightNavigationBar">true</item>
+  <item name="android:windowSoftInputMode">adjustResize</item>
+ </style>
+</resources>

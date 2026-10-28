@@ -44,6 +44,7 @@ def receipt_pdf(data):
         para(f"Medio de pago: {data['medio_pago']}")])
     if data.get('pago_referencia'):
         label='Referencia interna del aviso' if data.get('pago_validacion')=='AVISO_DISPOSITIVO' else 'Operación'
+        if str(data.get('pago_referencia','')).startswith('CAJA-'):label='Referencia interna de caja'
         flow.extend([para(f"Entidad: {data.get('pago_entidad','')}"),para(f"{label}: {data['pago_referencia']}")])
     if data.get('medio_pago')=='Fiado':
         flow.extend([para('VENTA A FIADO · CUENTA POR COBRAR',small),para(f"Vencimiento: {data.get('fiado_vencimiento','Por consultar')}",small),

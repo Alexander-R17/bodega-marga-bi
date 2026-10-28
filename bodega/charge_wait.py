@@ -15,12 +15,16 @@ def enabled():
     return setting('PAYMENT_NOTIFICATIONS_ENABLED',False) is True
 
 
-def _done(result):
+def _done(result,repo=None):
+    if repo is not None:
+        from bodega.shared_cart import finish
+        op=st.session_state.get('active_charge',{}).get('id')
+        if op:finish(repo,op)
     st.session_state['last_sale_receipt']={**result,'payment':'Yape'}
     st.session_state['cart']=[];st.session_state['reset_payment_confirmation']=True
     st.session_state.pop('active_charge',None)
-    st.session_state['show_yape_success']=True
-    st.session_state['flash']='Venta registrada a partir del aviso de Yape del celular vinculado.'
+    st.session_state.pop('show_yape_success',None)
+    st.session_state['flash']='Venta realizada'
     st.rerun(scope='app')
 
 
@@ -39,7 +43,7 @@ def _dialog(repo):
         st.caption('Orden de cobro CO-'+op[:8].upper()+' · consulta cada 3 segundos')
         if state=='REGISTRADO':
             from bodega.checkout import order_number
-            _done({'venta_id':status['venta_id'],'total':status['importe_centimos']/100,'orden':order_number(status['venta_id'])})
+            _done({'venta_id':status['venta_id'],'total':status['importe_centimos']/100,'orden':order_number(status['venta_id'])},repo)
         elif state=='ESPERANDO':
             with st.status('Esperando un aviso del celular receptor…',state='running',expanded=True):
                 st.write('Pide al cliente que pague al Yape del negocio. Mantén conectado el celular receptor.')
@@ -50,7 +54,7 @@ def _dialog(repo):
                 st.write('Estamos asociando el aviso a esta orden y comprobando que no esté repetido.')
                 try:
                     with identity_scope():result=repo.confirm_charge_notice(op)
-                    if result.get('estado')=='REGISTRADO':_done(result)
+                    if result.get('estado')=='REGISTRADO':_done(result,repo)
                     else:st.caption('Comprobando avisos del mismo importe. Espera unos segundos.')
                 except DataError as exc:
                     st.error(str(exc))
@@ -66,6 +70,8 @@ def _dialog(repo):
         if state!='REGISTRADO' and st.button('Cerrar y volver al carrito',key='charge_cancel_'+op):
             try:
                 with identity_scope():repo.finish_charge(op,cancel=True)
+                from bodega.shared_cart import finish
+                finish(repo,op,cancel=True)
                 st.session_state.pop('active_charge',None);st.rerun(scope='app')
             except DataError as exc:st.error(str(exc))
     monitor()
@@ -112,23 +118,22 @@ def checkout(repo,items,customer,total,valid):
     if st.button('Confirmar venta',type='primary',disabled=not valid or not ready,width='stretch',key='charge_start'):
         candidate=st.session_state.setdefault('charge_start_candidate',str(uuid4()))
         try:
+            from bodega.shared_cart import freeze
+            freeze(repo,candidate)
             result=repo.start_charge(candidate,device,[dict(x) for x in items],customer,total)
             st.session_state['active_charge']={'id':result['id']};st.session_state.pop('charge_start_candidate',None)
             st.rerun()
         except DataError as exc:
             st.error(str(exc))
-            if exc.confirmed_rejected:st.session_state.pop('charge_start_candidate',None)
+            if exc.confirmed_rejected:
+                from bodega.shared_cart import finish
+                finish(repo,candidate,cancel=True)
+                st.session_state.pop('charge_start_candidate',None)
     st.caption('Registro basado en el aviso del celular vinculado. No consulta el saldo del banco.')
 
 
 def success_animation():
-    st.markdown("""<style>
-    @keyframes bodega-check {from{transform:scale(.4);opacity:0}to{transform:scale(1);opacity:1}}
-    .bodega-payment-success{text-align:center;padding:24px;border:1px solid #b9dbcb;background:#f0faf4;border-radius:14px;color:#173b32}
-    .bodega-payment-success span{display:inline-block;font-size:44px;animation:bodega-check .5s ease-out}
-    @media(prefers-reduced-motion:reduce){.bodega-payment-success span{animation:none}}
-    </style><div class="bodega-payment-success" role="status"><span>✓</span>
-    <h3>Cobro registrado con éxito</h3><p>Aviso de Yape recibido · Venta guardada</p></div>""",unsafe_allow_html=True)
+    st.success('Venta realizada',icon='✅')
 
 
 def admin(repo):

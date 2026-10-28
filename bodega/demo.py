@@ -51,8 +51,10 @@ class DemoRepository(CreditDemo):
             if h.get('cliente_dni'):
                 customers[h['cliente_dni']]={'dni':h['cliente_dni'],'nombre':h['cliente_nombre']}
         for a in self.credit_accounts:customers[a['dni']]={'dni':a['dni'],'nombre':a['nombre']}
-        return [dict(c,id=dni) for dni,c in sorted(customers.items(),key=lambda pair:pair[1]['nombre'])
-                if query.casefold() in (dni+' '+c['nombre']).casefold()][:75]
+        import unicodedata
+        norm=lambda x: ''.join(c for c in unicodedata.normalize('NFD',str(x or '').casefold()) if not unicodedata.combining(c))
+        return [dict(c,id=dni) for dni,c in sorted(customers.items(),key=lambda pair:pair[1]['nombre'] or '')
+                if norm(query) in norm(dni+' '+(c['nombre'] or ''))][:75]
 
     def recent_table(self,name,limit=250):
         data=self.table(name)
@@ -88,6 +90,7 @@ class DemoRepository(CreditDemo):
         from bodega.payments import confirmed_amount
         amount=confirmed_amount(confirmed_total)
         from bodega.checkout import customer_data,payment_data,order_number
+        if payment=='Transferencia' and not reference and not entity:reference='CAJA-'+str(op).upper();entity='TRANSFERENCIA DEL NEGOCIO'
         customer=customer_data(customer); details=payment_data(payment,reference,entity)
         payload=(deepcopy(items),payment,deepcopy(customer),details)
         result=self._operation(op,payload)

@@ -52,7 +52,7 @@ def test_blocked_credit_can_still_receive_payment_and_refs_are_unique():
     r.credit_payment(str(uuid4()),sale['venta_id'],1,'Yape','REF-0001','YAPE')
     with pytest.raises(DataError,match='Referencia'):r.credit_payment(str(uuid4()),sale['venta_id'],1,'Yape','ref-0001','yape')
     with pytest.raises(DataError,match='Referencia'):r.sale(str(uuid4()),[{'producto_id':1,'cantidad':1,'descuento':0}],
-        'Yape',confirmed_total=4.8,reference='REF-0001',entity='YAPE')
+        'Yape',confirmed_total=4.8,reference='REF-0001',entity='YAPE',customer={'dni':'12345678','nombre':''})
 
 
 def test_credit_ticket_does_not_claim_cash_paid():
@@ -117,7 +117,7 @@ def test_wait_dialog_registers_only_after_server_notice_confirmation(monkeypatch
     monkeypatch.setattr(DemoRepository,'confirm_charge_notice',confirm,raising=False)
     app=AppTest.from_file(root/'app.py',default_timeout=45).run()
     app.radio(key='page').set_value('Registrar venta').run();app.button(key='add_1').click().run()
-    app.session_state['shop_view']='carrito';app.run();app.radio(key='sale_payment').set_value('Yape').run()
+    app.session_state['shop_view']='carrito';app.run();app.text_input(key='sale_customer_dni').set_value('12345678').run();app.radio(key='sale_payment').set_value('Yape').run()
     assert not any(t.label in {'Código de operación del pago','Entidad o cuenta receptora'} for t in app.text_input)
     assert not any(c.key=='payment_received' for c in app.checkbox)
     repo=app.session_state['demo_repo'];before=len(repo.headers)
@@ -130,4 +130,4 @@ def test_wait_dialog_registers_only_after_server_notice_confirmation(monkeypatch
     app.run()
     assert not app.exception and len(repo.headers)==before+1
     assert 'active_charge' not in app.session_state and app.session_state['cart']==[]
-    assert any('Cobro registrado con éxito' in t.value for t in app.markdown)
+    assert [t.value for t in app.success]==['Venta realizada']

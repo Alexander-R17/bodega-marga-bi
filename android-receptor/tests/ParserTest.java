@@ -23,7 +23,7 @@ public final class ParserTest {
         check(p,"Yape","Ejemplo te yapeó S/ 1.234",null);
         check(p,"Yape","Ejemplo te yapeó S/ 1,000.00",null);
         check(p,"Yape","Ejemplo te yapeó S/ 10.00 y S/ 20.00",null);
-        check(p,"Yape","Ejemplo te yapeó S/ 10.5",null);
+        check(p,"Yape","Ejemplo te yapeó S/ 10.5",1050);
         check(p,"Yape","Ejemplo te yapeó S/ 99999999999999999999",null);
         check(p,"Yape","Recarga y gana S/ 20.00",null);
         check(p,"Yape",null,null);

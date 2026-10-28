@@ -24,17 +24,17 @@ def test_register_sale_through_ui(app):
     repo=app.session_state["demo_repo"]; before=repo.products[0]["stock"]
     app.button(key="add_1").click().run()
     # AppTest no reproduce los reruns de fragmentos de un diálogo nativo.
-    # El recorrido del drawer se comprueba además en Chromium.
+    # AppTest no verifica visualmente un diálogo nativo.
     app.session_state["shop_view"]="carrito"
     app.run()
     app.button(key="plus_checkout_1").click().run()
-    app.radio(key="sale_payment").set_value("Plin").run()
-    app.text_input(key='payment_reference').set_value('TEST-001').run()
+    app.text_input(key="sale_customer_dni").set_value("12345678").run()
+    app.radio(key="sale_payment").set_value("Transferencia").run()
     app.checkbox(key="payment_received").check().run()
     next(b for b in app.button if b.label=="Confirmar venta").click().run()
     assert not app.exception and not app.error
     assert repo.products[0]["stock"]==before-2
-    assert repo.headers[-1]["medio_pago"]=="Plin"
+    assert repo.headers[-1]["medio_pago"]=="Transferencia"
     assert "pending_sale" not in app.session_state
     assert len(app.session_state["cart"])==0
 
@@ -44,6 +44,7 @@ def test_uncertain_sale_retries_same_operation_without_duplicate(app,monkeypatch
     app.radio(key="page").set_value("Registrar venta").run()
     app.button(key="add_1").click().run()
     app.session_state["shop_view"]="carrito";app.run()
+    app.text_input(key="sale_customer_dni").set_value("12345678").run()
     repo=app.session_state["demo_repo"];before=repo.products[0]["stock"]
     original=repo.sale;calls=[]
     def interrupted(op,items,payment,**kwargs):
@@ -67,6 +68,7 @@ def test_payment_must_be_confirmed_and_resets_when_cart_or_method_changes(app):
     app.radio(key="page").set_value("Registrar venta").run()
     app.button(key="add_1").click().run()
     app.session_state["shop_view"]="carrito";app.run()
+    app.text_input(key="sale_customer_dni").set_value("12345678").run()
     repo=app.session_state["demo_repo"];stock=repo.products[0]["stock"];sales=len(repo.headers)
     confirm=lambda:next(b for b in app.button if b.label=="Confirmar venta")
     assert confirm().disabled
@@ -79,9 +81,8 @@ def test_payment_must_be_confirmed_and_resets_when_cart_or_method_changes(app):
     app.button(key="plus_checkout_1").click().run()
     assert not app.checkbox(key="payment_received").value and confirm().disabled
     app.checkbox(key="payment_received").check().run()
-    app.radio(key="sale_payment").set_value("Plin").run()
+    app.radio(key="sale_payment").set_value("Transferencia").run()
     assert not app.checkbox(key="payment_received").value and confirm().disabled
-    app.text_input(key='payment_reference').set_value('TEST-002').run()
     app.checkbox(key="payment_received").check().run()
     next(i for i in app.number_input if i.label=="Descuento S/").set_value(.2).run()
     assert not app.checkbox(key="payment_received").value and confirm().disabled
