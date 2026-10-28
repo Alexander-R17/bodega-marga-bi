@@ -1,0 +1,20 @@
+{
+  "checks": [
+    "venta identificada de S/1.80 sin conflicto de variable DNI",
+    "segunda venta de S/4.20 reutiliza cliente sin duplicarlo",
+    "se mantiene validación del DNI del servidor",
+    "aviso asociado permanece visible después del plazo",
+    "recuperación exige revisión y el usuario original; no expone otras cuentas",
+    "recupera la orden vencida con su aviso original una vez; stock y ticket auditados",
+    "una orden sin aviso no se puede recuperar como pagada",
+    "sin stock no crea venta parcial ni pierde el aviso",
+    "varios avisos del mismo importe impiden recuperar automáticamente",
+    "rechaza aviso anterior a la orden y no relaja la ventana original",
+    "un receptor revocado no permite recuperar ventas nuevas",
+    "funciones privadas: anon y authenticated no tienen acceso",
+    "SQL 11 es repetible y no ejecuta ventas al instalarse"
+  ],
+  "entorno": "PGlite local aislado",
+  "produccion_modificada": false,
+  "causa_reproducida_antes": "42702: column reference dni is ambiguous"
+}

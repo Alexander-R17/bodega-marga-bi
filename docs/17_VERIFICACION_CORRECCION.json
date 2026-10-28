@@ -1,0 +1,18 @@
+{
+  "fecha": "2026-10-27",
+  "python": {
+    "passed": 29,
+    "deselected": 1,
+    "motivo_deseleccion": "Caso legado de espera con revisión manual, sustituido en el despliegue por flujo automático; no corresponde a este parche de recuperación."
+  },
+  "sql": {
+    "passed": 13,
+    "entorno": "PGlite aislado",
+    "regresion_previa_reproducida": "42702: column reference dni is ambiguous"
+  },
+  "produccion_modificada": false,
+  "validacion_supabase_real": "pendiente de aplicar SQL 11 y comprobar la orden existente",
+  "apk_modificado": false,
+  "archivos_python_base": "Leídos del main público actual antes de aplicar el parche",
+  "limitaciones": "No se afirma prueba bancaria ni visual en navegador. Los controles de interfaz se ejecutaron con AppTest."
+}
