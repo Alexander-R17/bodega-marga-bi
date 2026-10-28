@@ -47,7 +47,7 @@ begin
  raise exception 'El administrador debe estar incluido en el equipo';end if;
  insert into bodega_movil_config(id,project_id,api_key) values(true,p_project,p_api_key)
  on conflict(id) do update set project_id=excluded.project_id,api_key=excluded.api_key,actualizado_en=now();
- update bodega_movil_equipo set activo=false;
+ update bodega_movil_equipo set activo=false where activo is true;
  for x in select * from jsonb_array_elements(p_equipo) loop
   if length(coalesce(x->>'uid','')) not between 1 and 128 or position('@' in coalesce(x->>'email',''))<2
   or coalesce(x->>'rol','') not in ('administrador','cajero','analista') or length(coalesce(x->>'nombre',''))>120 then raise exception 'Equipo móvil inválido';end if;

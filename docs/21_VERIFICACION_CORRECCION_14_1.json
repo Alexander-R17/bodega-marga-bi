@@ -1,0 +1,19 @@
+{
+  "version": "14.1",
+  "fecha": "2026-10-28",
+  "alcance": [
+    "Función SQL de activación",
+    "Entrada Edge tienda-movil"
+  ],
+  "sql14_grupos": 13,
+  "activacion_grupos": 5,
+  "recuperacion_cobros_grupos": 13,
+  "edge_tests": 10,
+  "prueba_entrada_fallaba_antes": true,
+  "prueba_entrada_pasa_ahora": true,
+  "sql_motor": "PGlite aislado",
+  "safeupdate_extension_nativa_ejecutada": false,
+  "safeupdate_requisito_where_verificado": true,
+  "produccion_modificada": false,
+  "apk_modificado": false
+}

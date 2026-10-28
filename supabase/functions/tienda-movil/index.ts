@@ -66,4 +66,6 @@ export async function handle(req:Request,env=(k:string)=>Deno.env.get(k),http=fe
   return reply(200,{data:await r.json()});
  }catch{return reply(503,{message:'No se recibió confirmación. Reintenta la misma operación.'});}
 }
-if(import.meta.main)Deno.serve(handle);
+// Deno entrega (Request, ServeHandlerInfo). El segundo argumento de handle es
+// una dependencia interna; no debe recibir los metadatos de la conexión.
+if(typeof Deno!=='undefined')Deno.serve((req:Request)=>handle(req));
