@@ -1,5 +1,6 @@
 """Carrito compartido por UID; la base controla versión, reintentos y bloqueo de cobro."""
 from copy import deepcopy
+import time
 from uuid import uuid4
 import streamlit as st
 from bodega.auth import identity_scope, web_session_guard
@@ -60,13 +61,19 @@ def finish(repo,op,cancel=False):
 
 @web_session_guard
 def _monitor(repo):
+    if time.monotonic()<st.session_state.get('shared_retry_after',0):return
     try:
         if not available(repo):return
         if any(k in st.session_state for k in ('pending_sale','pending_credit','active_charge','shared_upload')):return
         result=repo.shared_read()
     except DataError:
+        failures=min(4,st.session_state.get('shared_poll_failures',0)+1)
+        st.session_state['shared_poll_failures']=failures
+        st.session_state['shared_retry_after']=time.monotonic()+min(12,2**failures)
         st.caption('No se pudo actualizar el carrito. Se reintentará sin cambiar la venta ni las existencias.')
         return
+    st.session_state['shared_poll_failures']=0
+    st.session_state.pop('shared_retry_after',None)
     previous=st.session_state.get('shared_snapshot')
     if previous is None:
         adopt(result);st.rerun(scope='app')
@@ -74,10 +81,10 @@ def _monitor(repo):
         # No publicar una copia vieja después de que otro dispositivo la cambie.
         if st.session_state.get('cart',[])==previous['items']:
             adopt(result);repo.clear_cache();st.rerun(scope='app')
-    st.caption('Carrito e inventario compartidos · actualización cada 3 segundos')
+    st.caption('Carrito e inventario compartidos · consulta automática cada segundo')
 
 
-@st.fragment(run_every=3)
+@st.fragment(run_every=1)
 def monitor(repo):
     return _monitor(repo)
 

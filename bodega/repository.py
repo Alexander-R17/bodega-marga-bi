@@ -50,7 +50,7 @@ class CloudRepository:
         started = time.monotonic()
         try:
             r = self.http.request(method, f"{self.url}/rest/v1/{path}",
-                                 headers=headers, timeout=40, **kwargs)
+                                 headers=headers, timeout=kwargs.pop("request_timeout",40), **kwargs)
         except requests.RequestException:
             raise DataError("No se recibió confirmación de Supabase. Reintenta la misma operación; conserva su identificador.", confirmed_rejected=False) from None
         if not r.ok:
@@ -60,6 +60,7 @@ class CloudRepository:
                 known=['El carrito cambió en otro dispositivo','El carrito está en proceso de cobro','Resuelve primero el cobro abierto','Stock insuficiente o producto inactivo','El producto cambió en otro dispositivo. Recarga su ficha']
                 safe=next((x for x in known if x in detail),None)
                 if safe:raise DataError(safe)
+            if r.status_code==404 and path=='rpc/bodega_carrito_snapshot_v17':raise DataError('Ejecuta database/17_sincronizacion_y_recuperacion.sql en Supabase para actualizar la sincronización.')
             if r.status_code==404 and path=='rpc/bodega_activar_movil':raise DataError('Ejecuta database/14_app_nativa_y_carrito.sql para activar la app nativa.')
             try:code=r.json().get('code','')
             except (ValueError,AttributeError):code=''
@@ -128,7 +129,7 @@ class CloudRepository:
         if name not in allowed:
             raise DataError("Tabla no permitida.")
         cache_key=(name,str(since),str(until))
-        ttl=300 if name in {"bodega_categorias","bodega_proveedores"} else 15
+        ttl=300 if name in {"bodega_categorias","bodega_proveedores"} else (2 if name=="bodega_productos" else 15)
         cached=self._cache.get(cache_key)
         if cached and time.monotonic()-cached[0] < ttl:
             return cached[1].copy(deep=True)
@@ -175,7 +176,7 @@ class CloudRepository:
 
     def native_ready(self):
         cache=getattr(self,'_native_readiness',None)
-        if cache and time.monotonic()-cache[0]<10:return cache[1]
+        if cache and time.monotonic()-cache[0]<(60 if cache[1] else 10):return cache[1]
         try:ready=bool(self._request('POST','rpc/bodega_config_movil',json={}))
         except DataError as exc:
             if not exc.confirmed_rejected:raise
@@ -189,7 +190,7 @@ class CloudRepository:
 
     def shared_read(self):
         identity=require_role('administrador','cajero')
-        return self._request('POST','rpc/bodega_carrito_consultar',json={'p_usuario':identity['uid']})
+        return self._request('POST','rpc/bodega_carrito_snapshot_v17',json={'p_usuario':identity['uid']},request_timeout=(4,6))
 
     def shared_write(self,op,items,revision):
         identity=require_role('administrador','cajero')
